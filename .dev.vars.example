@@ -1,3 +1,4 @@
 API_URL=https://api.openai.com/v1
 API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 MODEL_NAME=gpt-4o
+SESSION_TTL_HOURS=168
