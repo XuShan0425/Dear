@@ -6,3 +6,8 @@ compatibility_date = "2026-03-17"
 directory = "."
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "dear-auth"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
