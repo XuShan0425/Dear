@@ -1,6 +1,6 @@
 # Dear · 小墨 MVP
 
-一个极简、治愈风格的 AI 聊天前端，适合直接部署到 VPS。
+一个极简、治愈风格的 AI 聊天前端，支持 VPS 和 Cloudflare Workers 部署。
 
 ## 你只要改 3 行
 
@@ -28,10 +28,44 @@ python3 server.py
 
 后续你建立樱花内网穿透后，把公网域名指向这个本机端口即可。
 
+## 部署到 Cloudflare Workers
+
+项目已包含 `wrangler.toml`（Worker 名称：`damp-grass-d9bf`）。
+
+### 第一步：登录 Wrangler
+
+```bash
+npx wrangler login
+```
+
+### 第二步：设置 3 个环境变量
+
+```bash
+npx wrangler secret put API_URL
+npx wrangler secret put API_KEY
+npx wrangler secret put MODEL_NAME
+```
+
+### 第三步：部署
+
+```bash
+npx wrangler deploy
+```
+
+部署后访问：`https://damp-grass-d9bf.wangyitong0425.workers.dev`
+
+### 本地调试（可选）
+
+```bash
+cp .dev.vars.example .dev.vars
+npx wrangler dev
+```
+
 ## 文件说明
 
 - `index.html`：单文件前端（内联 CSS + JS）
 - `server.py`：极简后端代理（从 `.env` 读取 API 设置、注入 system prompt）
+- `worker.js`：Cloudflare Worker 代理（从 Worker 环境变量读取 API 设置）
 - `.env.example`：环境变量模板
 
 ## 关键特性
