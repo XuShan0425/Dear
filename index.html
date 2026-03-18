@@ -161,6 +161,7 @@
         enterAuthState();
       }
     }
+    function saveMessages() { localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(messages.slice(-HISTORY_LIMIT))); }
 
     // #下面代码实现的功能：绑定页面交互事件
     function bindEvents() {
