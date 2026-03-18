@@ -116,7 +116,18 @@ npx wrangler dev
 
 - `index.html`：登录 + 聊天 + 后台管理 UI
 - `worker.js`：Worker 路由入口
-- `worker/*.js`：按功能模块拆分（auth/chat/admin/db/utils/constants）
+- `worker/chat.js`：Worker 侧聊天服务（调用主 agent 核心层）
+- `worker/agent_core.js`：Worker 侧主 agent 核心层（人格/安全/场景/定制/版本入口）
+- `worker/*.js`：按功能模块拆分（auth/chat/admin/db/utils/constants/agent_core）
 - `server.py`：VPS 启动入口
-- `backend/*.py`：VPS 后端模块（auth/chat/db/http_handler/constants/env_utils）
+- `backend/chat.py`：VPS 侧聊天服务（调用主 agent 核心层）
+- `backend/agent_core.py`：VPS 侧主 agent 核心层（人格/安全/场景/定制/版本入口）
+- `backend/*.py`：VPS 后端模块（auth/chat/db/http_handler/constants/env_utils/agent_core）
 - `wrangler.toml`：Worker + D1 绑定
+
+
+## 主 agent 后续优化入口
+
+- **人格层 / 安全层 / 场景层 / 定制层**：优先改 `worker/agent_core.js` 与 `backend/agent_core.py` 的 `AGENT_CORE_LAYERS`。
+- **版本层**：通过 `AGENT_CORE_VERSION` 做版本号管理，便于灰度、回滚、评测。
+- **消息组装入口**：统一通过 `buildAgentMessages`（Worker）和 `build_agent_messages`（VPS）构建 messages，避免再把主 agent 逻辑写回路由层。

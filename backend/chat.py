@@ -1,7 +1,8 @@
 import json
 from urllib import error, request
 
-from backend.constants import MAX_HISTORY_ITEMS, SYSTEM_PROMPT
+from backend.agent_core import AGENT_CORE_VERSION, build_agent_messages
+from backend.constants import MAX_HISTORY_ITEMS
 
 
 #下面代码实现的功能：规范化上游 chat/completions 接口地址
@@ -40,9 +41,8 @@ def sanitize_history(raw_history):
 #下面代码实现的功能：调用上游模型接口
 
 def fetch_chat_reply(api_url: str, api_key: str, model_name: str, user_message: str, history):
-    full_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [
-        {"role": "user", "content": user_message}
-    ]
+    #下面代码实现的功能：通过主 agent 核心层统一构建 messages，避免人格逻辑散落在接口主流程中
+    full_messages = build_agent_messages(user_message=user_message, history=history)
     upstream_payload = {
         "model": model_name,
         "messages": full_messages,
@@ -80,4 +80,4 @@ def fetch_chat_reply(api_url: str, api_key: str, model_name: str, user_message: 
     if not reply:
         reply = "我在这儿，刚刚有点卡住了。你愿意再说一次吗？"
 
-    return {"reply": reply}, None, 200
+    return {"reply": reply, "agentCoreVersion": AGENT_CORE_VERSION}, None, 200
