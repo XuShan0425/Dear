@@ -1,5 +1,4 @@
-import { HISTORY_LIMIT } from "./constants.js";
-import { AGENT_CORE_VERSION, buildAgentMessages } from "./agent_core.js";
+import { HISTORY_LIMIT, SYSTEM_PROMPT } from "./constants.js";
 import { normalizeChatEndpoint, requireCsrf, sanitizeHistory } from "./utils.js";
 import { getSession } from "./auth.js";
 
@@ -27,9 +26,7 @@ export async function handleChatRequest(request, env) {
   if (!userMessage) return { error: "消息不能为空", status: 400 };
 
   const history = sanitizeHistory(payload?.history, HISTORY_LIMIT);
-
-  // #下面代码实现的功能：通过主 agent 核心层统一构建 messages，避免人格逻辑散落在接口主流程中
-  const messages = buildAgentMessages({ history, userMessage });
+  const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...history, { role: "user", content: userMessage }];
 
   let upstreamResponse;
   try {
@@ -56,5 +53,5 @@ export async function handleChatRequest(request, env) {
 
   const reply =
     upstreamData?.choices?.[0]?.message?.content?.trim() || "我在这儿，刚刚有点卡住了。你愿意再说一次吗？";
-  return { payload: { reply, agentCoreVersion: AGENT_CORE_VERSION }, status: 200 };
+  return { payload: { reply }, status: 200 };
 }
