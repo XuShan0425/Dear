@@ -115,6 +115,8 @@ npx wrangler dev
 ## 文件说明
 
 - `index.html`：登录 + 聊天 + 后台管理 UI
-- `worker.js`：D1 用户体系、限流、锁定、日志、CSRF
-- `server.py`：VPS 版后端（SQLite）
+- `worker.js`：Worker 路由入口
+- `worker/*.js`：按功能模块拆分（auth/chat/admin/db/utils/constants）
+- `server.py`：VPS 启动入口
+- `backend/*.py`：VPS 后端模块（auth/chat/db/http_handler/constants/env_utils）
 - `wrangler.toml`：Worker + D1 绑定

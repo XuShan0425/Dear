@@ -115,15 +115,18 @@
     bindEvents();
     bootstrap();
 
+    // #下面代码实现的功能：初始化 CSRF 与登录态
     async function bootstrap() {
       await refreshCsrf();
       await checkAuth();
     }
 
+    // #下面代码实现的功能：按用户名生成本地聊天记录 key
     function storageKeyForCurrentUser() {
       return `xiaomo_history_${currentUser?.username || "guest"}`;
     }
 
+    // #下面代码实现的功能：加载当前用户的本地聊天记录
     function loadMessages() {
       try {
         const parsed = JSON.parse(localStorage.getItem(storageKeyForCurrentUser()) || "[]");
@@ -132,18 +135,21 @@
     }
     function saveMessages() { localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(messages.slice(-HISTORY_LIMIT))); }
 
+    // #下面代码实现的功能：刷新 CSRF token
     async function refreshCsrf() {
       const r = await fetch('/api/auth/csrf', { credentials: 'include' });
       const d = await r.json().catch(() => ({}));
       csrfToken = d.csrfToken || "";
     }
 
+    // #下面代码实现的功能：统一封装带 CSRF 的请求
     async function request(url, options = {}) {
       const headers = { ...(options.headers || {}) };
       if (options.method && options.method !== "GET") headers["X-CSRF-Token"] = csrfToken;
       return fetch(url, { ...options, credentials: "include", headers });
     }
 
+    // #下面代码实现的功能：检查当前登录状态
     async function checkAuth() {
       const r = await fetch('/api/auth/me', { credentials: 'include' });
       const d = await r.json().catch(() => ({}));
@@ -155,7 +161,9 @@
         enterAuthState();
       }
     }
+    function saveMessages() { localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(messages.slice(-HISTORY_LIMIT))); }
 
+    // #下面代码实现的功能：绑定页面交互事件
     function bindEvents() {
       el("tabLogin").onclick = () => setAuthMode("login");
       el("tabRegister").onclick = () => setAuthMode("register");
@@ -189,6 +197,7 @@
       el("authMsg").classList.toggle("error", !!err);
     }
 
+    // #下面代码实现的功能：提交注册或登录
     async function submitAuth() {
       const username = el("authUsername").value.trim();
       const password = el("authPassword").value;
@@ -221,6 +230,7 @@
       }
     }
 
+    // #下面代码实现的功能：展示登录锁定倒计时弹窗
     function showLockModal(seconds) {
       const m = el("lockModal");
       const textEl = el("lockText");
@@ -228,6 +238,7 @@
       textEl.textContent = `请等待 ${seconds} 秒后再尝试登录。`;
     }
 
+    // #下面代码实现的功能：退出当前登录并可选清理缓存
     async function logout() {
       const clear = confirm("退出登录是否清理当前账号本地聊天记录？");
       const key = storageKeyForCurrentUser();
@@ -238,6 +249,7 @@
       enterAuthState();
     }
 
+    // #下面代码实现的功能：下线当前账号全部设备
     async function logoutAll() {
       if (!confirm("确认下线该账号所有设备？")) return;
       await request('/api/auth/logout_all', { method: 'POST' });
@@ -246,6 +258,7 @@
       enterAuthState();
     }
 
+    // #下面代码实现的功能：后台管理员登录并拉取失败日志
     async function adminLoginAndLoad() {
       const username = el("adminUser").value.trim();
       const password = el("adminPass").value;
@@ -266,6 +279,7 @@
       }
     }
 
+    // #下面代码实现的功能：切换到聊天界面
     function enterChatState() {
       authGateEl.classList.add("hidden");
       chatEl.classList.remove("hidden");
@@ -280,6 +294,7 @@
       inputEl.focus();
     }
 
+    // #下面代码实现的功能：切换到登录界面
     function enterAuthState() {
       authGateEl.classList.remove("hidden");
       chatEl.classList.add("hidden");
@@ -290,6 +305,7 @@
       el("authPassword").value = "";
     }
 
+    // #下面代码实现的功能：渲染全部聊天消息
     function renderAll() { chatEl.innerHTML = ""; for (const m of messages) chatEl.appendChild(createMessageNode(m.role, m.content)); scrollToBottom(); }
     function createMessageNode(role, text) {
       const row = document.createElement("article"); row.className = `msg ${role}`;
@@ -301,6 +317,7 @@
     function appendMessage(role, text) { messages.push({ role, content: text, ts: Date.now() }); messages = messages.slice(-HISTORY_LIMIT); saveMessages(); chatEl.appendChild(createMessageNode(role, text)); scrollToBottom(); }
     function scrollToBottom() { chatEl.scrollTop = chatEl.scrollHeight; }
 
+    // #下面代码实现的功能：发送消息并处理回复
     async function sendMessage() {
       const text = inputEl.value.trim(); if (!text) return;
       appendMessage("user", text); inputEl.value = ""; inputEl.style.height = "44px"; sendBtn.disabled = true; inputEl.disabled = true;
