@@ -1,4 +1,11 @@
 <!doctype html>
+<!--
+这个文件实现什么功能：Dear 的单页聊天前端界面与基础交互。
+它负责什么：展示登录/注册页、展示聊天页、管理当前浏览器内的本地聊天缓存、调用鉴权与聊天接口。
+它不负责什么：服务端鉴权、主 agent 推理、安全策略持久化、数据库读写。
+对外暴露什么：浏览器访问 `/` 或 `/index.html` 时渲染的页面与对 `/api/auth/*`、`/api/chat` 的前端请求。
+依赖哪些关键模块：后端认证接口、聊天接口，以及 localStorage。
+-->
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -6,119 +13,1444 @@
   <title>小墨 | 夜色陪伴</title>
   <style>
     :root {
-      --bg-deep: #0a1017; --bg-soft: #111a24; --panel: rgba(17, 27, 38, 0.86); --panel-border: rgba(144, 167, 188, 0.22);
-      --text-main: #e8eef4; --text-muted: #9fb1c0; --bubble-ai: #1c2a37; --bubble-user: #2f3141;
-      --accent: #88b9a2; --accent-warm: #ca9269; --radius-lg: 28px; --radius-md: 20px; --danger: #d89292;
+      --bg-night: #050b11;
+      --bg-deep: #09131b;
+      --bg-panel: rgba(10, 18, 25, 0.8);
+      --bg-panel-strong: rgba(8, 14, 20, 0.9);
+      --bg-soft: rgba(255, 255, 255, 0.04);
+      --line-soft: rgba(173, 195, 209, 0.18);
+      --line-strong: rgba(214, 227, 235, 0.2);
+      --text-main: #edf2ee;
+      --text-muted: #9db0b8;
+      --text-faint: #71848c;
+      --accent-mint: #9ed2be;
+      --accent-amber: #efae7c;
+      --accent-deep: #173039;
+      --danger: #efb0ad;
+      --radius-xl: 34px;
+      --radius-lg: 26px;
+      --radius-md: 18px;
+      --radius-sm: 14px;
+      --shadow-lg: 0 34px 80px rgba(0, 0, 0, 0.5);
+      --shadow-md: 0 18px 44px rgba(0, 0, 0, 0.26);
+      --ease-soft: cubic-bezier(0.2, 0.8, 0.24, 1);
+      --ease-snappy: cubic-bezier(0.22, 0.72, 0.2, 1);
     }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; color: var(--text-main); font-family: "PingFang SC", sans-serif; letter-spacing: .03em;
-      background: radial-gradient(120% 95% at 10% 0%, rgba(122, 160, 181, .13), transparent 45%), radial-gradient(95% 60% at 90% 100%, rgba(126, 166, 119, .16), transparent 48%), linear-gradient(168deg, var(--bg-deep), #0d141d 52%, var(--bg-soft)); }
-    body { display: flex; justify-content: center; padding: 16px; }
-    .app { width: min(900px, 100%); min-height: calc(100dvh - 32px); background: var(--panel); border: 1px solid var(--panel-border); border-radius: 26px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 22px 52px rgba(0,0,0,.46); }
-    .topbar { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(148,172,196,.22); }
-    .topbar-left { display: flex; align-items: center; gap: 12px; }
-    .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(214,222,232,.35); }
-    .title h1 { margin: 0; font-size: 16px; } .title p { margin: 2px 0 0; color: var(--text-muted); font-size: 12px; }
-    .mini-btn { border: 1px solid rgba(150,175,198,.35); border-radius: 12px; background: rgba(17,27,38,.6); color: var(--text-main); padding: 7px 10px; font-size: 12px; cursor: pointer; }
 
-    .auth-wrap, .admin-wrap { margin: auto; width: min(480px, calc(100% - 28px)); border: 1px solid rgba(150,175,198,.28); border-radius: 20px; background: rgba(14,22,31,.76); padding: 16px; }
-    .auth-sub { margin: 0 0 14px; color: var(--text-muted); font-size: 13px; }
-    .auth-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
-    .auth-tab { flex: 1; border-radius: 12px; padding: 8px; border: 1px solid rgba(150,175,198,.3); background: rgba(20,32,45,.55); color: var(--text-main); cursor: pointer; }
-    .auth-tab.active { border-color: rgba(136,185,162,.8); }
-    .auth-field { margin-top: 8px; }
-    .auth-field label { display: block; margin-bottom: 5px; font-size: 12px; color: var(--text-muted); }
-    .auth-input-row { display: flex; gap: 8px; }
-    .auth-field input { width: 100%; border-radius: 12px; border: 1px solid rgba(150,175,198,.32); background: rgba(11,17,24,.64); color: var(--text-main); padding: 10px 12px; outline: none; }
-    .auth-toggle { border-radius: 12px; border: 1px solid rgba(150,175,198,.32); background: rgba(11,17,24,.64); color: var(--text-main); padding: 10px 12px; cursor: pointer; }
-    .auth-submit { margin-top: 12px; width: 100%; border: none; border-radius: 12px; padding: 10px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent-warm)); color: #11222c; cursor: pointer; }
-    .auth-msg { min-height: 20px; margin-top: 8px; font-size: 12px; color: var(--text-muted); } .auth-msg.error { color: var(--danger); }
+    * {
+      box-sizing: border-box;
+    }
 
-    .chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-    .msg { max-width: 94%; display: flex; gap: 10px; align-items: flex-end; } .msg.ai { align-self: flex-start; } .msg.user { align-self: flex-end; flex-direction: row-reverse; }
-    .msg-icon { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(212,223,233,.32); object-fit: cover; background: #304052; }
-    .bubble { padding: 13px 16px; border-radius: var(--radius-lg); line-height: 1.82; font-size: 15px; letter-spacing: .025em; white-space: pre-wrap; word-break: break-word; }
-    .msg.ai .bubble { background: var(--bubble-ai); border-bottom-left-radius: 10px; } .msg.user .bubble { background: var(--bubble-user); border-bottom-right-radius: 10px; }
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      color: var(--text-main);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0.02em;
+      background:
+        radial-gradient(120% 100% at 0% 0%, rgba(118, 173, 171, 0.18), transparent 46%),
+        radial-gradient(90% 80% at 100% 100%, rgba(203, 146, 109, 0.18), transparent 48%),
+        linear-gradient(160deg, #061018 0%, #08131a 45%, #04090d 100%);
+    }
 
-    .composer { padding: 12px; border-top: 1px solid rgba(148,172,196,.2); background: rgba(16,26,36,.62); }
-    .composer-inner { display: flex; align-items: flex-end; gap: 10px; border: 1px solid rgba(150,175,198,.32); border-radius: var(--radius-md); background: rgba(11,17,24,.58); padding: 8px; }
-    textarea { width: 100%; border: none; outline: none; resize: none; min-height: 44px; max-height: 140px; background: transparent; color: var(--text-main); font-size: 15px; line-height: 1.75; padding: 7px 8px; }
-    .send-btn { border: none; border-radius: 14px; padding: 10px 14px; font-size: 14px; font-weight: 700; color: #11222c; background: linear-gradient(135deg, var(--accent), var(--accent-warm)); cursor: pointer; min-width: 72px; }
-    .hint { margin: 8px 4px 0; color: var(--text-muted); font-size: 12px; }
+    body {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+      overflow: hidden;
+    }
 
-    .admin-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-    .admin-table th, .admin-table td { border-bottom: 1px solid rgba(150,175,198,.2); padding: 6px; text-align: left; }
-    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; place-items: center; }
-    .modal-card { width: min(420px, calc(100% - 24px)); background: #1b2735; border: 1px solid rgba(150,175,198,.35); border-radius: 14px; padding: 16px; }
-    .hidden { display: none !important; }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -14%;
+      background:
+        radial-gradient(circle at 18% 20%, rgba(158, 210, 190, 0.15), transparent 22%),
+        radial-gradient(circle at 78% 78%, rgba(239, 174, 124, 0.12), transparent 24%);
+      filter: blur(28px);
+      animation: drift 24s ease-in-out infinite alternate;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 22%, transparent 78%, rgba(255, 255, 255, 0.03)),
+        linear-gradient(rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0.015));
+      opacity: 0.45;
+      mix-blend-mode: screen;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    img,
+    input,
+    textarea,
+    button {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      width: min(1120px, 100%);
+      min-height: calc(100dvh - 40px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--line-soft);
+      border-radius: 38px;
+      background:
+        linear-gradient(180deg, rgba(10, 18, 26, 0.72), rgba(6, 11, 16, 0.96)),
+        radial-gradient(circle at top right, rgba(158, 210, 190, 0.08), transparent 30%);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(30px);
+      isolation: isolate;
+    }
+
+    .app::before,
+    .app::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(4px);
+      opacity: 0.72;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .app::before {
+      top: -120px;
+      right: -90px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(158, 210, 190, 0.14), transparent 65%);
+    }
+
+    .app::after {
+      bottom: -110px;
+      left: -90px;
+      width: 340px;
+      height: 340px;
+      background: radial-gradient(circle, rgba(239, 174, 124, 0.12), transparent 68%);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      padding: 22px 26px 18px;
+      border-bottom: 1px solid var(--line-soft);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0));
+      animation: surfaceLift 0.82s cubic-bezier(0.2, 0.8, 0.24, 1) both;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .avatar-frame {
+      width: 54px;
+      height: 54px;
+      flex-shrink: 0;
+      border-radius: 18px;
+      padding: 3px;
+      background: linear-gradient(135deg, rgba(158, 210, 190, 0.9), rgba(239, 174, 124, 0.76));
+      box-shadow: 0 16px 34px rgba(17, 34, 42, 0.28);
+    }
+
+    .avatar {
+      width: 100%;
+      height: 100%;
+      border-radius: 15px;
+      object-fit: cover;
+      display: block;
+      background: rgba(9, 15, 22, 0.9);
+    }
+
+    .title {
+      min-width: 0;
+    }
+
+    .title-kicker {
+      margin: 0;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(237, 242, 238, 0.72);
+    }
+
+    .title h1 {
+      margin: 6px 0 0;
+      font-family: "STZhongsong", "Songti SC", "PingFang SC", serif;
+      font-size: 21px;
+      font-weight: 700;
+    }
+
+    .title p {
+      margin: 6px 0 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .presence-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border: 1px solid rgba(173, 195, 209, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .presence-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-mint), var(--accent-amber));
+      box-shadow: 0 0 14px rgba(158, 210, 190, 0.6);
+    }
+
+    .mini-btn,
+    .auth-tab,
+    .auth-toggle,
+    .auth-submit,
+    .send-btn,
+    .prompt-chip {
+      transition:
+        transform 0.2s var(--ease-snappy),
+        border-color 0.2s ease,
+        background 0.2s ease,
+        color 0.2s ease,
+        box-shadow 0.22s var(--ease-snappy),
+        opacity 0.2s ease;
+    }
+
+    .mini-btn {
+      border: 1px solid rgba(173, 195, 209, 0.18);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+      padding: 10px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+    }
+
+    .mini-btn:hover,
+    .auth-tab:hover,
+    .auth-toggle:hover,
+    .prompt-chip:hover {
+      transform: translateY(-1px);
+      border-color: rgba(173, 195, 209, 0.3);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .mini-btn:disabled,
+    .auth-submit:disabled,
+    .send-btn:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .mini-btn:focus-visible,
+    .auth-tab:focus-visible,
+    .auth-toggle:focus-visible,
+    .auth-submit:focus-visible,
+    .send-btn:focus-visible,
+    .prompt-chip:focus-visible,
+    .auth-field input:focus-visible,
+    textarea:focus-visible {
+      outline: none;
+      border-color: rgba(158, 210, 190, 0.8);
+      box-shadow: 0 0 0 3px rgba(158, 210, 190, 0.12);
+    }
+
+    .auth-shell {
+      flex: 1;
+      width: min(100%, 1080px);
+      display: grid;
+      grid-template-columns: minmax(0, 1.12fr) minmax(340px, 420px);
+      gap: 22px;
+      padding: 28px;
+      margin: 0 auto;
+      overflow-y: auto;
+    }
+
+    .auth-hero,
+    .auth-panel,
+    .scene-card,
+    .modal-card {
+      border: 1px solid var(--line-soft);
+      box-shadow: var(--shadow-md);
+    }
+
+    .auth-hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 430px;
+      padding: 30px;
+      border-radius: 30px;
+      background:
+        linear-gradient(140deg, rgba(20, 35, 44, 0.88), rgba(8, 15, 21, 0.62)),
+        radial-gradient(circle at top right, rgba(239, 174, 124, 0.14), transparent 30%);
+      animation: surfaceLift 0.88s 0.04s cubic-bezier(0.2, 0.8, 0.24, 1) both;
+    }
+
+    .auth-hero::before {
+      content: "";
+      position: absolute;
+      right: -80px;
+      bottom: -80px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(158, 210, 190, 0.16), transparent 65%);
+      filter: blur(10px);
+      pointer-events: none;
+    }
+
+    .hero-kicker {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(237, 242, 238, 0.7);
+    }
+
+    .auth-hero h2 {
+      margin: 18px 0 14px;
+      max-width: 11ch;
+      font-family: "STZhongsong", "Songti SC", "PingFang SC", serif;
+      font-size: clamp(31px, 5.8vw, 52px);
+      line-height: 1.18;
+      font-weight: 700;
+    }
+
+    .auth-hero p {
+      margin: 0;
+      max-width: 36rem;
+      color: var(--text-muted);
+      font-size: 16px;
+      line-height: 1.9;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .note-card {
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(214, 227, 235, 0.14);
+      background: rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(8px);
+      animation: cardFloat 12s ease-in-out infinite alternate;
+    }
+
+    .note-card:nth-child(2) {
+      animation-delay: 1.4s;
+    }
+
+    .note-card:nth-child(3) {
+      animation-delay: 2.8s;
+    }
+
+    .note-card:nth-child(4) {
+      animation-delay: 4.2s;
+    }
+
+    .note-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .note-card span {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.75;
+    }
+
+    .auth-panel {
+      align-self: center;
+      padding: 26px 24px;
+      border-radius: 28px;
+      background:
+        linear-gradient(180deg, rgba(11, 18, 25, 0.88), rgba(7, 12, 18, 0.9)),
+        radial-gradient(circle at top, rgba(158, 210, 190, 0.08), transparent 28%);
+      backdrop-filter: blur(16px);
+      animation: surfaceLift 0.88s 0.12s cubic-bezier(0.2, 0.8, 0.24, 1) both;
+    }
+
+    .auth-panel h2 {
+      margin: 0;
+      font-family: "STZhongsong", "Songti SC", "PingFang SC", serif;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .auth-sub {
+      margin: 12px 0 0;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .auth-tabs {
+      display: flex;
+      gap: 8px;
+      margin: 20px 0 14px;
+      padding: 4px;
+      border-radius: 18px;
+      border: 1px solid rgba(214, 227, 235, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .auth-tab {
+      flex: 1;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 11px 12px;
+      color: var(--text-main);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .auth-tab.active {
+      border-color: rgba(214, 227, 235, 0.16);
+      background: linear-gradient(135deg, rgba(158, 210, 190, 0.2), rgba(239, 174, 124, 0.18));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .auth-field {
+      margin-top: 14px;
+    }
+
+    .auth-field label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .auth-input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .auth-field input,
+    .auth-toggle {
+      border: 1px solid rgba(173, 195, 209, 0.18);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-main);
+      min-height: 48px;
+    }
+
+    .auth-field input {
+      width: 100%;
+      padding: 12px 14px;
+    }
+
+    .auth-field input::placeholder,
+    textarea::placeholder {
+      color: rgba(157, 176, 184, 0.8);
+    }
+
+    .auth-toggle {
+      padding: 0 16px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .auth-submit {
+      width: 100%;
+      margin-top: 18px;
+      border: none;
+      border-radius: 18px;
+      min-height: 50px;
+      font-weight: 700;
+      cursor: pointer;
+      color: var(--accent-deep);
+      background: linear-gradient(135deg, var(--accent-mint), var(--accent-amber));
+      box-shadow: 0 18px 34px rgba(158, 210, 190, 0.2);
+    }
+
+    .auth-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 22px 36px rgba(158, 210, 190, 0.18);
+    }
+
+    .auth-msg {
+      min-height: 22px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .auth-msg.error {
+      color: var(--danger);
+    }
+
+    .auth-footnote {
+      margin: 14px 0 0;
+      color: var(--text-faint);
+      font-size: 12px;
+      line-height: 1.8;
+    }
+
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 24px 24px 20px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(173, 195, 209, 0.3) transparent;
+    }
+
+    .chat::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .chat::-webkit-scrollbar-thumb {
+      background: rgba(173, 195, 209, 0.24);
+      border-radius: 999px;
+    }
+
+    .scene-card {
+      position: relative;
+      overflow: hidden;
+      padding: 24px;
+      border-radius: 28px;
+      background:
+        linear-gradient(145deg, rgba(17, 31, 40, 0.8), rgba(8, 14, 20, 0.58)),
+        radial-gradient(circle at top right, rgba(239, 174, 124, 0.12), transparent 28%);
+      animation: surfaceLift 0.72s 0.04s cubic-bezier(0.2, 0.8, 0.24, 1) both;
+    }
+
+    .scene-card::after {
+      content: "";
+      position: absolute;
+      inset: auto auto -70px -50px;
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(158, 210, 190, 0.16), transparent 68%);
+      pointer-events: none;
+    }
+
+    .scene-eyebrow {
+      margin: 0;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(237, 242, 238, 0.7);
+    }
+
+    .scene-card h2 {
+      margin: 14px 0 0;
+      max-width: 14ch;
+      font-family: "STZhongsong", "Songti SC", "PingFang SC", serif;
+      font-size: clamp(26px, 4vw, 38px);
+      line-height: 1.32;
+      font-weight: 700;
+    }
+
+    .scene-card p {
+      margin: 12px 0 0;
+      max-width: 42rem;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.85;
+    }
+
+    .scene-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .scene-tag {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(214, 227, 235, 0.12);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .msg {
+      --message-delay: 0ms;
+      --message-offset: 0px;
+      max-width: min(84%, 760px);
+      display: grid;
+      align-items: end;
+      gap: 12px;
+      animation: messageRise 0.44s var(--message-delay) var(--ease-soft) both;
+    }
+
+    .msg .msg-icon,
+    .msg .bubble,
+    .msg .msg-meta {
+      will-change: transform, opacity;
+    }
+
+    .msg .msg-icon {
+      animation: messageIconIn 0.36s calc(var(--message-delay) + 20ms) var(--ease-soft) both;
+    }
+
+    .msg .bubble {
+      transform-origin: left bottom;
+      animation: messageBubbleIn 0.42s calc(var(--message-delay) + 12ms) var(--ease-soft) both;
+    }
+
+    .msg.user .bubble {
+      transform-origin: right bottom;
+    }
+
+    .msg .msg-meta {
+      animation: messageMetaIn 0.3s calc(var(--message-delay) + 96ms) ease both;
+    }
+
+    .msg.ai {
+      align-self: flex-start;
+      grid-template-columns: 40px minmax(0, 1fr);
+      --message-offset: -12px;
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      grid-template-columns: minmax(0, 1fr) 40px;
+      --message-offset: 12px;
+    }
+
+    .msg-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 16px;
+      border: 1px solid rgba(214, 227, 235, 0.16);
+      object-fit: cover;
+      display: block;
+      background: rgba(18, 29, 39, 0.9);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+    }
+
+    .msg-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .msg.user .msg-body {
+      align-items: flex-end;
+    }
+
+    .bubble {
+      padding: 16px 18px;
+      border-radius: 24px;
+      font-size: 15px;
+      line-height: 1.85;
+      white-space: pre-wrap;
+      word-break: break-word;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 16px 28px rgba(0, 0, 0, 0.18);
+    }
+
+    .msg.ai .bubble {
+      border: 1px solid rgba(158, 210, 190, 0.12);
+      border-bottom-left-radius: 10px;
+      background: linear-gradient(160deg, rgba(20, 35, 44, 0.92), rgba(10, 18, 26, 0.94));
+    }
+
+    .msg.user .bubble {
+      border: 1px solid rgba(239, 174, 124, 0.14);
+      border-bottom-right-radius: 10px;
+      background: linear-gradient(160deg, rgba(63, 45, 56, 0.94), rgba(33, 25, 34, 0.94));
+    }
+
+    .msg-meta {
+      padding: 0 6px;
+      color: var(--text-faint);
+      font-size: 12px;
+    }
+
+    .typing {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 44px;
+    }
+
+    .typing i {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(237, 242, 238, 0.8);
+      animation: dotPulse 1.2s ease-in-out infinite;
+    }
+
+    .typing i:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .typing i:nth-child(3) {
+      animation-delay: 0.3s;
+    }
+
+    .composer {
+      padding: 16px 20px 20px;
+      border-top: 1px solid var(--line-soft);
+      background: linear-gradient(180deg, rgba(9, 15, 21, 0.38), rgba(6, 10, 15, 0.82));
+      animation: surfaceLift 0.6s 0.08s cubic-bezier(0.2, 0.8, 0.24, 1) both;
+    }
+
+    .composer-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 6px 10px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .composer-prompts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .prompt-chip {
+      border: 1px solid rgba(173, 195, 209, 0.16);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .prompt-chip:hover {
+      color: var(--text-main);
+    }
+
+    .composer-inner {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      padding: 10px;
+      border: 1px solid rgba(173, 195, 209, 0.16);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    textarea {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 18px;
+      resize: none;
+      min-height: 56px;
+      max-height: 180px;
+      padding: 10px 12px;
+      background: transparent;
+      color: var(--text-main);
+      outline: none;
+      line-height: 1.85;
+      font-size: 15px;
+    }
+
+    .send-btn {
+      position: relative;
+      overflow: hidden;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      border-radius: 18px;
+      min-width: 88px;
+      min-height: 52px;
+      padding: 0 18px;
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--accent-deep);
+      background: linear-gradient(135deg, var(--accent-mint), var(--accent-amber));
+      box-shadow: 0 16px 30px rgba(158, 210, 190, 0.18);
+      transform: translate3d(0, 0, 0);
+      transition:
+        transform 0.24s var(--ease-snappy),
+        box-shadow 0.24s var(--ease-snappy),
+        filter 0.24s var(--ease-soft);
+    }
+
+    .send-btn::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, transparent 18%, rgba(255, 255, 255, 0.38) 48%, transparent 78%);
+      transform: translateX(-135%);
+      transition: transform 0.55s ease;
+    }
+
+    .send-btn::after {
+      content: "";
+      position: absolute;
+      inset: -16%;
+      background: radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.55), transparent 46%);
+      opacity: 0;
+      transform: scale(0.82);
+      transition:
+        opacity 0.28s ease,
+        transform 0.42s var(--ease-snappy);
+      pointer-events: none;
+    }
+
+    .hint {
+      margin: 12px 4px 0;
+      color: var(--text-faint);
+      font-size: 12px;
+      line-height: 1.75;
+    }
+
+    .send-btn-text,
+    .send-btn-icon {
+      position: relative;
+      z-index: 1;
+    }
+
+    .send-btn-icon {
+      font-size: 14px;
+      transition: transform 0.3s var(--ease-snappy);
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(2, 7, 10, 0.6);
+      backdrop-filter: blur(12px);
+    }
+
+    .modal-card {
+      width: min(420px, 100%);
+      padding: 24px;
+      border-radius: 26px;
+      background:
+        linear-gradient(150deg, rgba(17, 29, 38, 0.94), rgba(8, 13, 20, 0.96)),
+        radial-gradient(circle at top right, rgba(239, 174, 124, 0.1), transparent 26%);
+    }
+
+    .modal-card h3 {
+      margin: 0 0 10px;
+      font-family: "STZhongsong", "Songti SC", "PingFang SC", serif;
+      font-size: 24px;
+    }
+
+    .modal-card p {
+      margin: 0;
+      color: var(--text-muted);
+      line-height: 1.8;
+      font-size: 14px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @keyframes drift {
+      from {
+        transform: translate3d(-1.6%, -1.2%, 0) scale(1);
+      }
+
+      to {
+        transform: translate3d(1.6%, 1.8%, 0) scale(1.04);
+      }
+    }
+
+    @keyframes cardFloat {
+      from {
+        transform: translateY(0);
+      }
+
+      to {
+        transform: translateY(-6px);
+      }
+    }
+
+    @keyframes messageRise {
+      from {
+        opacity: 0;
+        transform: translate3d(var(--message-offset), 14px, 0) scale(0.985);
+        filter: blur(2px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+        filter: blur(0);
+      }
+    }
+
+    @keyframes messageIconIn {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 10px, 0) scale(0.92);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+    }
+
+    @keyframes messageBubbleIn {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 8px, 0) scale(0.975);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+    }
+
+    @keyframes messageMetaIn {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 5px, 0);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+      }
+    }
+
+    @keyframes dotPulse {
+      0%,
+      80%,
+      100% {
+        transform: scale(0.7);
+        opacity: 0.45;
+      }
+
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    @keyframes surfaceLift {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 18px, 0);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+      }
+    }
+
+    @keyframes buttonSweep {
+      from {
+        transform: translateX(-135%);
+      }
+
+      to {
+        transform: translateX(135%);
+      }
+    }
+
+    @keyframes sendPulse {
+      0%,
+      100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+
+      50% {
+        transform: translate3d(1px, -1px, 0) scale(1.06);
+      }
+    }
+
+    @keyframes sendKick {
+      0% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+
+      40% {
+        transform: translate3d(2px, -2px, 0) scale(1.08);
+      }
+
+      100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+    }
+
+    @keyframes sendRipple {
+      from {
+        opacity: 0.62;
+        transform: scale(0.78);
+      }
+
+      to {
+        opacity: 0;
+        transform: scale(1.35);
+      }
+    }
+
+    @keyframes sendLabelPulse {
+      0%,
+      100% {
+        opacity: 0.82;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+
+    .send-btn:hover::before {
+      transform: translateX(135%);
+    }
+
+    .send-btn:hover {
+      transform: translate3d(0, -2px, 0);
+      box-shadow: 0 22px 36px rgba(158, 210, 190, 0.18);
+      filter: saturate(1.04);
+    }
+
+    .send-btn:hover::after {
+      opacity: 0.56;
+      transform: scale(1);
+    }
+
+    .send-btn:active {
+      transform: translate3d(0, 0, 0) scale(0.98);
+    }
+
+    .send-btn:active::after {
+      opacity: 0.7;
+    }
+
+    .send-btn:hover .send-btn-icon {
+      transform: translate3d(2px, -2px, 0);
+    }
+
+    .send-btn.is-kick::after {
+      animation: sendRipple 0.42s var(--ease-snappy);
+    }
+
+    .send-btn.is-kick .send-btn-icon {
+      animation: sendKick 0.42s var(--ease-snappy);
+    }
+
+    .send-btn.is-loading::before {
+      animation: buttonSweep 0.95s linear infinite;
+    }
+
+    .send-btn.is-loading .send-btn-text {
+      animation: sendLabelPulse 0.9s ease-in-out infinite;
+    }
+
+    .send-btn.is-loading .send-btn-icon {
+      animation: sendPulse 0.9s ease-in-out infinite;
+    }
+
+    @media (max-width: 920px) {
+      .app {
+        border-radius: 30px;
+      }
+
+      .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 18px 20px 16px;
+      }
+
+      .header-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .auth-shell {
+        grid-template-columns: 1fr;
+        gap: 18px;
+        padding: 20px;
+      }
+
+      .auth-hero {
+        min-height: auto;
+      }
+
+      .auth-hero h2 {
+        max-width: none;
+      }
+
+      .chat {
+        padding: 20px 20px 18px;
+      }
+
+      .msg {
+        max-width: 100%;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 0;
+      }
+
+      .app {
+        width: 100%;
+        min-height: 100dvh;
+        border-radius: 0;
+      }
+
+      .topbar {
+        gap: 12px;
+        padding: calc(12px + env(safe-area-inset-top)) 14px 10px;
+      }
+
+      .avatar-frame {
+        width: 50px;
+        height: 50px;
+      }
+
+      .title h1 {
+        font-size: 18px;
+      }
+
+      .title p {
+        font-size: 12px;
+      }
+
+      .auth-shell,
+      .chat,
+      .composer {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .auth-shell {
+        gap: 14px;
+        padding-top: 12px;
+        padding-bottom: 14px;
+      }
+
+      .auth-hero,
+      .auth-panel,
+      .scene-card,
+      .modal-card {
+        border-radius: 24px;
+      }
+
+      .auth-hero,
+      .auth-panel,
+      .scene-card {
+        padding: 16px;
+      }
+
+      .chat {
+        gap: 14px;
+        padding-top: 14px;
+        padding-bottom: 12px;
+      }
+
+      .auth-hero p,
+      .auth-sub,
+      .scene-card p {
+        font-size: 14px;
+      }
+
+      .auth-hero h2,
+      .scene-card h2 {
+        line-height: 1.28;
+      }
+
+      .hero-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .composer-meta {
+        flex-direction: column;
+        gap: 5px;
+        margin: 0 2px 7px;
+      }
+
+      .composer-prompts {
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+
+      .prompt-chip {
+        padding: 7px 11px;
+        font-size: 11px;
+      }
+
+      .composer-inner {
+        gap: 8px;
+        padding: 7px;
+        border-radius: 22px;
+      }
+
+      textarea {
+        min-height: 52px;
+        padding: 8px 10px;
+      }
+
+      .send-btn {
+        min-width: 82px;
+        min-height: 46px;
+        padding: 0 13px;
+        border-radius: 16px;
+      }
+
+      .composer {
+        padding-top: 12px;
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+      }
+
+      .auth-field input,
+      textarea {
+        font-size: 16px;
+      }
+
+      .hint {
+        margin-top: 8px;
+        font-size: 11px;
+        line-height: 1.65;
+      }
+
+      .msg.ai {
+        grid-template-columns: 34px minmax(0, 1fr);
+      }
+
+      .msg.user {
+        grid-template-columns: minmax(0, 1fr) 34px;
+      }
+
+      .msg-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 14px;
+      }
+
+      .bubble {
+        padding: 14px 16px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .title p {
+        line-height: 1.58;
+      }
+
+      .scene-card h2 {
+        font-size: clamp(22px, 7.2vw, 28px);
+      }
+
+      .bubble {
+        font-size: 14px;
+        line-height: 1.78;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 </head>
 <body>
   <main class="app">
     <header class="topbar">
-      <div class="topbar-left">
-        <img id="topAvatar" class="avatar" src="./avatar.jpg" alt="小墨头像" />
-        <div class="title"><h1>小墨</h1><p id="statusText">在你身边，慢慢聊，不着急。</p></div>
+      <div class="brand">
+        <div class="avatar-frame">
+          <img id="topAvatar" class="avatar" alt="小墨头像" />
+        </div>
+        <div class="title">
+          <p class="title-kicker">夜色陪伴</p>
+          <h1>小墨</h1>
+          <p id="statusText">在你身边，慢慢说，不着急。</p>
+        </div>
       </div>
-      <div style="display:flex; gap:8px;">
-        <button id="adminToggleBtn" class="mini-btn" type="button">后台</button>
+      <div class="header-actions">
+        <span id="presencePill" class="presence-pill">轻声在线</span>
         <button id="logoutAllBtn" class="mini-btn hidden" type="button">下线全部设备</button>
         <button id="logoutBtn" class="mini-btn hidden" type="button">退出登录</button>
       </div>
     </header>
 
-    <section id="authGate" class="auth-wrap">
-      <h2>欢迎回来</h2>
-      <p class="auth-sub">先登录，再和小墨慢慢聊。</p>
-      <div class="auth-tabs"><button id="tabLogin" class="auth-tab active" type="button">登录</button><button id="tabRegister" class="auth-tab" type="button">注册</button></div>
-      <div class="auth-field"><label for="authUsername">用户名</label><input id="authUsername" placeholder="3-32位，字母/数字/_/-" /></div>
-      <div class="auth-field">
-        <label for="authPassword">密码</label>
-        <div class="auth-input-row"><input id="authPassword" type="password" placeholder="至少 8 位" /><button id="togglePwdBtn" class="auth-toggle" type="button">显示</button></div>
-      </div>
-      <button id="authSubmit" class="auth-submit" type="button">登录</button>
-      <p id="authMsg" class="auth-msg"></p>
-    </section>
+    <section id="authGate" class="auth-shell">
+      <article class="auth-hero">
+        <p class="hero-kicker">平行时空同龄挚友</p>
+        <h2>今夜的房间，先替你亮一盏灯。</h2>
+        <p>不需要整理情绪，也不用想清楚再开口。把今天那些零碎的感受、没有讲完的话、卡在胸口的一小口气，先轻轻放下来。</p>
+        <div class="hero-grid">
+          <div class="note-card">
+            <strong>不用先讲道理</strong>
+            <span>可以只从一个瞬间、一盏路灯、一个表情，或者刚刚那口叹气开始。</span>
+          </div>
+          <div class="note-card">
+            <strong>碎片也有重量</strong>
+            <span>晚饭没胃口、手机不想回、被窝里睡不着，这些小事都值得被认真听见。</span>
+          </div>
+          <div class="note-card">
+            <strong>不急着变好</strong>
+            <span>先有人陪你把情绪接住，再慢慢看清楚自己正在经历什么。</span>
+          </div>
+          <div class="note-card">
+            <strong>你的节奏优先</strong>
+            <span>想停一下、改口、发呆、只打几个字，都算是在和我聊天。</span>
+          </div>
+        </div>
+      </article>
 
-    <section id="adminPanel" class="admin-wrap hidden">
-      <h2 style="margin:0 0 8px;">后台管理</h2>
-      <p class="auth-sub">查看登录失败日志（时间/IP/用户名）</p>
-      <div class="auth-field"><label>管理员用户名</label><input id="adminUser" value="Tong" /></div>
-      <div class="auth-field"><label>管理员密码</label><input id="adminPass" type="password" value="15010190" /></div>
-      <button id="adminLoginBtn" class="auth-submit" type="button">登录后台</button>
-      <p id="adminMsg" class="auth-msg"></p>
-      <table class="admin-table"><thead><tr><th>时间</th><th>IP</th><th>用户名</th><th>原因</th></tr></thead><tbody id="adminLogsBody"></tbody></table>
+      <section class="auth-panel">
+        <h2>先让小墨陪你坐一会儿</h2>
+        <p class="auth-sub">登录后就能接着聊。不用先解释清楚，也不用把情绪整理成标准答案。</p>
+        <div class="auth-tabs">
+          <button id="tabLogin" class="auth-tab active" type="button">登录</button>
+          <button id="tabRegister" class="auth-tab" type="button">注册</button>
+        </div>
+        <div class="auth-field">
+          <label for="authUsername">用户名</label>
+          <input id="authUsername" placeholder="3-32 位，字母 / 数字 / _ / -" autocomplete="username" />
+        </div>
+        <div class="auth-field">
+          <label for="authPassword">密码</label>
+          <div class="auth-input-row">
+            <input id="authPassword" type="password" placeholder="至少 8 位" autocomplete="current-password" />
+            <button id="togglePwdBtn" class="auth-toggle" type="button">显示</button>
+          </div>
+        </div>
+        <button id="authSubmit" class="auth-submit" type="button">登录</button>
+        <p id="authMsg" class="auth-msg"></p>
+        <p class="auth-footnote">聊天内容只会按账号缓存在这台设备的浏览器里，方便你下次回来继续聊。退出登录时，也可以顺手把这份缓存清掉。</p>
+      </section>
     </section>
 
     <section id="chat" class="chat hidden" aria-live="polite"></section>
-    <footer id="composer" class="composer hidden"><div class="composer-inner"><textarea id="input" placeholder="想说什么都可以，按 Enter 发送，Shift+Enter 换行"></textarea><button id="send" class="send-btn" type="button">发送</button></div><p class="hint">聊天记录按用户名保存在当前浏览器。登出时可选择清理当前账号缓存。</p></footer>
+
+    <footer id="composer" class="composer hidden">
+      <div class="composer-meta">
+        <span>今晚不用从“完整故事”开始，先说一小段就很好。</span>
+        <span>按 Enter 发送，Shift + Enter 换行</span>
+      </div>
+      <div class="composer-prompts">
+        <button class="prompt-chip" type="button" data-prompt="刚刚最想躲开的那一秒，是在什么时候？">最想躲开的那一秒</button>
+        <button class="prompt-chip" type="button" data-prompt="我脑子里有件小事，一直转个不停。">脑子里转个不停</button>
+        <button class="prompt-chip" type="button" data-prompt="如果先只说一句真话，我现在最想说……">先说一句真话</button>
+      </div>
+      <div class="composer-inner">
+        <textarea id="input" placeholder="想说什么都可以，我会在这儿慢慢听。"></textarea>
+        <button id="send" class="send-btn" type="button">
+          <span id="sendLabel" class="send-btn-text">发送</span>
+          <span class="send-btn-icon" aria-hidden="true">↗</span>
+        </button>
+      </div>
+      <p class="hint">聊天内容会按用户名缓存在当前浏览器里，方便你下次回来从这里继续。</p>
+    </footer>
   </main>
 
-  <div id="lockModal" class="modal hidden"><div class="modal-card"><h3 style="margin:0 0 8px;">登录已临时锁定</h3><p id="lockText" style="margin:0;color:#c7d5e2;"></p><div style="text-align:right;margin-top:10px;"><button id="lockOkBtn" class="mini-btn" type="button">我知道了</button></div></div></div>
+  <div id="lockModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>登录已临时锁定</h3>
+      <p id="lockText"></p>
+      <div class="modal-actions">
+        <button id="lockOkBtn" class="mini-btn" type="button">知道啦</button>
+      </div>
+    </div>
+  </div>
 
   <script>
-    const AVATAR_URL = "./avatar.jpg";
     const HISTORY_LIMIT = 20;
-    let csrfToken = "";
+    const assistantAvatarSrc = buildAvatarData("墨", "#e7b17e", "#7ab7a6", "#fff8f0");
+    const userAvatarSrc = buildAvatarData("你", "#7c98bf", "#27374d", "#f3f8ff");
+    const starterTags = ["一幕画面", "一句没说出口的话", "今天最绕不开的小事"];
+
     let authMode = "login";
     let currentUser = null;
     let messages = [];
+    let sendKickTimer = null;
 
     const el = (id) => document.getElementById(id);
-    const chatEl = el("chat"); const inputEl = el("input"); const sendBtn = el("send");
-    const authGateEl = el("authGate"); const composerEl = el("composer"); const adminPanelEl = el("adminPanel");
+    const chatEl = el("chat");
+    const inputEl = el("input");
+    const sendBtn = el("send");
+    const sendLabelEl = el("sendLabel");
+    const authGateEl = el("authGate");
+    const composerEl = el("composer");
     const statusTextEl = el("statusText");
+    const presencePillEl = el("presencePill");
 
-    const fallbackAvatar = "data:image/svg+xml;utf8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect rx='48' ry='48' width='96' height='96' fill='%236a8aa0'/><text x='50%' y='56%' text-anchor='middle' font-size='42' fill='white'>墨</text></svg>");
-    el("topAvatar").src = AVATAR_URL; el("topAvatar").onerror = () => (el("topAvatar").src = fallbackAvatar);
+    el("topAvatar").src = assistantAvatarSrc;
 
     bindEvents();
     bootstrap();
 
-    // #下面代码实现的功能：初始化 CSRF 与登录态
+    // #下面代码实现的功能：初始化页面并在服务暂时不可用时给出柔和的错误提示
     async function bootstrap() {
-      await refreshCsrf();
-      await checkAuth();
+      try {
+        await checkAuth();
+      } catch {
+        enterAuthState();
+        showAuthMsg("暂时连不上服务器，稍后再试试。我会在这儿等你。", true);
+      }
     }
 
     // #下面代码实现的功能：按用户名生成本地聊天记录 key
@@ -126,62 +1458,109 @@
       return `xiaomo_history_${currentUser?.username || "guest"}`;
     }
 
-    // #下面代码实现的功能：加载当前用户的本地聊天记录
+    // #下面代码实现的功能：按用户名生成当前聊天窗口对应的本地 conversation_id key
+    function conversationKeyForCurrentUser() {
+      return `xiaomo_conversation_${currentUser?.username || "guest"}`;
+    }
+
+    // #下面代码实现的功能：读取当前账号的本地聊天记录
     function loadMessages() {
       try {
         const parsed = JSON.parse(localStorage.getItem(storageKeyForCurrentUser()) || "[]");
         return Array.isArray(parsed) ? parsed.slice(-HISTORY_LIMIT) : [];
-      } catch { return []; }
-    }
-    function saveMessages() { localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(messages.slice(-HISTORY_LIMIT))); }
-
-    // #下面代码实现的功能：刷新 CSRF token
-    async function refreshCsrf() {
-      const r = await fetch('/api/auth/csrf', { credentials: 'include' });
-      const d = await r.json().catch(() => ({}));
-      csrfToken = d.csrfToken || "";
+      } catch {
+        return [];
+      }
     }
 
-    // #下面代码实现的功能：统一封装带 CSRF 的请求
+    function saveMessages() {
+      localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(messages.slice(-HISTORY_LIMIT)));
+    }
+
+    // #下面代码实现的功能：读取当前账号绑定的 conversation_id，让外部聊天接口的短期上下文和当前窗口保持一致
+    function loadConversationId() {
+      return localStorage.getItem(conversationKeyForCurrentUser()) || "";
+    }
+
+    function createConversationId() {
+      if (window.crypto?.randomUUID) {
+        return `dear-web-${window.crypto.randomUUID()}`;
+      }
+      return `dear-web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    function ensureConversationId(reset = false) {
+      if (reset) {
+        const freshId = createConversationId();
+        localStorage.setItem(conversationKeyForCurrentUser(), freshId);
+        return freshId;
+      }
+
+      const existingId = loadConversationId();
+      if (existingId) {
+        return existingId;
+      }
+
+      const freshId = createConversationId();
+      localStorage.setItem(conversationKeyForCurrentUser(), freshId);
+      return freshId;
+    }
+
+    // #下面代码实现的功能：统一封装带会话 cookie 的请求
     async function request(url, options = {}) {
       const headers = { ...(options.headers || {}) };
-      if (options.method && options.method !== "GET") headers["X-CSRF-Token"] = csrfToken;
       return fetch(url, { ...options, credentials: "include", headers });
     }
 
-    // #下面代码实现的功能：检查当前登录状态
+    // #下面代码实现的功能：检查当前登录状态并决定进入哪个界面
     async function checkAuth() {
-      const r = await fetch('/api/auth/me', { credentials: 'include' });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.authenticated) {
-        currentUser = d.user;
-        if (d.csrfToken) csrfToken = d.csrfToken;
+      const resp = await request("/api/auth/me");
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && data.authenticated) {
+        currentUser = data.user;
         enterChatState();
-      } else {
-        enterAuthState();
+        return;
       }
+      currentUser = null;
+      enterAuthState();
     }
-    function saveMessages() { localStorage.setItem(storageKeyForCurrentUser(), JSON.stringify(messages.slice(-HISTORY_LIMIT))); }
 
-    // #下面代码实现的功能：绑定页面交互事件
+    // #下面代码实现的功能：绑定页面所有按钮与输入交互
     function bindEvents() {
       el("tabLogin").onclick = () => setAuthMode("login");
       el("tabRegister").onclick = () => setAuthMode("register");
       el("authSubmit").onclick = submitAuth;
       el("logoutBtn").onclick = logout;
       el("logoutAllBtn").onclick = logoutAll;
-      el("adminToggleBtn").onclick = () => adminPanelEl.classList.toggle("hidden");
-      el("adminLoginBtn").onclick = adminLoginAndLoad;
-      el("togglePwdBtn").onclick = () => {
-        const p = el("authPassword");
-        const isPwd = p.type === "password";
-        p.type = isPwd ? "text" : "password";
-        el("togglePwdBtn").textContent = isPwd ? "隐藏" : "显示";
-      };
       el("lockOkBtn").onclick = () => el("lockModal").classList.add("hidden");
+
+      el("togglePwdBtn").onclick = () => {
+        const passwordInput = el("authPassword");
+        const isPassword = passwordInput.type === "password";
+        passwordInput.type = isPassword ? "text" : "password";
+        el("togglePwdBtn").textContent = isPassword ? "隐藏" : "显示";
+      };
+
       sendBtn.onclick = sendMessage;
-      inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
-      inputEl.addEventListener("input", () => { inputEl.style.height = "44px"; inputEl.style.height = `${Math.min(inputEl.scrollHeight, 140)}px`; });
+      inputEl.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          sendMessage();
+        }
+      });
+
+      inputEl.addEventListener("input", () => {
+        inputEl.style.height = "56px";
+        inputEl.style.height = `${Math.min(inputEl.scrollHeight, 180)}px`;
+      });
+
+      document.querySelectorAll(".prompt-chip").forEach((button) => {
+        button.onclick = () => {
+          inputEl.value = button.dataset.prompt || "";
+          inputEl.dispatchEvent(new Event("input"));
+          inputEl.focus();
+        };
+      });
     }
 
     function setAuthMode(mode) {
@@ -192,147 +1571,326 @@
       showAuthMsg("");
     }
 
-    function showAuthMsg(msg, err = false) {
-      el("authMsg").textContent = msg;
-      el("authMsg").classList.toggle("error", !!err);
+    function showAuthMsg(message, isError = false) {
+      el("authMsg").textContent = message;
+      el("authMsg").classList.toggle("error", !!isError);
     }
 
-    // #下面代码实现的功能：提交注册或登录
+    // #下面代码实现的功能：提交注册或登录，并在处理中锁住按钮防止重复提交
     async function submitAuth() {
       const username = el("authUsername").value.trim();
       const password = el("authPassword").value;
-      if (!username || !password) return showAuthMsg("请填写用户名和密码", true);
+      const submitButton = el("authSubmit");
+
+      if (!username || !password) {
+        showAuthMsg("把用户名和密码填一下，我们就能开始聊。", true);
+        return;
+      }
+
+      submitButton.disabled = true;
+      submitButton.textContent = authMode === "login" ? "登录中…" : "注册中…";
 
       try {
         if (authMode === "register") {
-          const resp = await request('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-          const data = await resp.json().catch(() => ({}));
-          if (!resp.ok) throw new Error(data.error || "注册失败");
-          showAuthMsg("注册成功，请登录");
+          const registerResp = await request("/api/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password }),
+          });
+          const registerData = await registerResp.json().catch(() => ({}));
+          if (!registerResp.ok) {
+            throw new Error(registerData.error || "注册失败");
+          }
+
+          showAuthMsg("注册好了，现在就可以登录继续聊。", false);
           setAuthMode("login");
-          el("authUsername").value = data.username || username;
+          el("authUsername").value = registerData.username || username;
           el("authPassword").value = "";
           el("authPassword").focus();
           return;
         }
 
-        const resp = await request('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-          if ((resp.status === 423 || resp.status === 429) && data.lockRemainingSeconds) showLockModal(data.lockRemainingSeconds);
-          throw new Error(data.error || "登录失败");
+        const loginResp = await request("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const loginData = await loginResp.json().catch(() => ({}));
+
+        if (!loginResp.ok) {
+          if ((loginResp.status === 423 || loginResp.status === 429) && loginData.lockRemainingSeconds) {
+            showLockModal(loginData.lockRemainingSeconds);
+          }
+          throw new Error(loginData.error || "登录失败");
         }
-        currentUser = data.user;
-        csrfToken = data.csrfToken || csrfToken;
+
+        currentUser = loginData.user;
         enterChatState();
-      } catch (e) {
-        showAuthMsg(e.message || "操作失败", true);
+      } catch (error) {
+        showAuthMsg(error.message || "操作失败", true);
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = authMode === "login" ? "登录" : "注册";
       }
     }
 
-    // #下面代码实现的功能：展示登录锁定倒计时弹窗
+    // #下面代码实现的功能：展示登录锁定剩余时间
     function showLockModal(seconds) {
-      const m = el("lockModal");
-      const textEl = el("lockText");
-      m.classList.remove("hidden");
-      textEl.textContent = `请等待 ${seconds} 秒后再尝试登录。`;
+      el("lockText").textContent = `请等待 ${seconds} 秒后再尝试登录。先歇一会儿，等会儿再回来也可以。`;
+      el("lockModal").classList.remove("hidden");
     }
 
-    // #下面代码实现的功能：退出当前登录并可选清理缓存
+    // #下面代码实现的功能：退出当前会话并允许用户顺手清理本地缓存
     async function logout() {
-      const clear = confirm("退出登录是否清理当前账号本地聊天记录？");
+      const shouldClear = confirm("退出登录时，要不要顺手清理这个账号的本地聊天记录？");
       const key = storageKeyForCurrentUser();
-      await request('/api/auth/logout', { method: 'POST' });
-      if (clear) localStorage.removeItem(key);
-      currentUser = null;
-      messages = [];
-      enterAuthState();
-    }
-
-    // #下面代码实现的功能：下线当前账号全部设备
-    async function logoutAll() {
-      if (!confirm("确认下线该账号所有设备？")) return;
-      await request('/api/auth/logout_all', { method: 'POST' });
-      currentUser = null;
-      messages = [];
-      enterAuthState();
-    }
-
-    // #下面代码实现的功能：后台管理员登录并拉取失败日志
-    async function adminLoginAndLoad() {
-      const username = el("adminUser").value.trim();
-      const password = el("adminPass").value;
-      const msgEl = el("adminMsg");
-      const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ username, password }) });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) { msgEl.textContent = d.error || "后台登录失败"; msgEl.classList.add("error"); return; }
-      msgEl.textContent = "后台登录成功，正在加载日志..."; msgEl.classList.remove("error");
-      const logsResp = await fetch('/api/admin/login-failures', { credentials: 'include' });
-      const logsData = await logsResp.json().catch(() => ({ items: [] }));
-      const body = el("adminLogsBody");
-      body.innerHTML = "";
-      for (const item of logsData.items || []) {
-        const tr = document.createElement("tr");
-        const t = new Date(Number(item.created_at)).toLocaleString();
-        tr.innerHTML = `<td>${t}</td><td>${item.ip || "-"}</td><td>${item.username || "-"}</td><td>${item.reason || "-"}</td>`;
-        body.appendChild(tr);
+      const conversationKey = conversationKeyForCurrentUser();
+      await request("/api/auth/logout", { method: "POST" });
+      if (shouldClear) {
+        localStorage.removeItem(key);
+        localStorage.removeItem(conversationKey);
       }
+      currentUser = null;
+      messages = [];
+      enterAuthState();
     }
 
-    // #下面代码实现的功能：切换到聊天界面
+    // #下面代码实现的功能：把当前账号的所有会话都下线
+    async function logoutAll() {
+      if (!confirm("确认下线这个账号的全部设备吗？")) {
+        return;
+      }
+      await request("/api/auth/logout_all", { method: "POST" });
+      currentUser = null;
+      messages = [];
+      enterAuthState();
+    }
+
+    // #下面代码实现的功能：切换到聊天界面并恢复当前账号的本地消息
     function enterChatState() {
       authGateEl.classList.add("hidden");
       chatEl.classList.remove("hidden");
       composerEl.classList.remove("hidden");
       el("logoutBtn").classList.remove("hidden");
       el("logoutAllBtn").classList.remove("hidden");
-      statusTextEl.textContent = `你好，${currentUser?.username || "朋友"}。我在听。`;
+      presencePillEl.textContent = "正在陪你";
+      statusTextEl.textContent = `${currentUser?.username || "朋友"}，今晚慢慢说，我会跟着你的节奏。`;
+      showAuthMsg("");
       messages = loadMessages();
-      if (messages.length === 0) messages.push({ role: "assistant", content: "嗨，我是小墨。你可以慢慢说，我会认真听。", ts: Date.now() });
+      if (messages.length === 0) {
+        ensureConversationId(true);
+        messages.push({ role: "assistant", content: "嗨，我是小墨。慢慢说就好，我会认真听。", ts: Date.now() });
+      } else {
+        ensureConversationId();
+      }
       saveMessages();
       renderAll();
       inputEl.focus();
     }
 
-    // #下面代码实现的功能：切换到登录界面
+    // #下面代码实现的功能：切换到登录界面并重置可见状态
     function enterAuthState() {
       authGateEl.classList.remove("hidden");
       chatEl.classList.add("hidden");
       composerEl.classList.add("hidden");
       el("logoutBtn").classList.add("hidden");
       el("logoutAllBtn").classList.add("hidden");
-      statusTextEl.textContent = "在你身边，慢慢聊，不着急。";
+      presencePillEl.textContent = "轻声在线";
+      statusTextEl.textContent = "在你身边，慢慢说，不着急。";
+      showAuthMsg("");
+      setSendingState(false);
       el("authPassword").value = "";
+      inputEl.value = "";
+      inputEl.style.height = "56px";
     }
 
-    // #下面代码实现的功能：渲染全部聊天消息
-    function renderAll() { chatEl.innerHTML = ""; for (const m of messages) chatEl.appendChild(createMessageNode(m.role, m.content)); scrollToBottom(); }
-    function createMessageNode(role, text) {
-      const row = document.createElement("article"); row.className = `msg ${role}`;
-      const icon = document.createElement("img"); icon.className = "msg-icon"; icon.alt = role === "assistant" ? "小墨" : "你"; icon.src = role === "assistant" ? el("topAvatar").src : fallbackAvatar;
-      const bubble = document.createElement("div"); bubble.className = "bubble"; bubble.textContent = text;
-      row.appendChild(icon); row.appendChild(bubble); return row;
+    // #下面代码实现的功能：渲染聊天区，包括顶部的场景引导卡片
+    function renderAll() {
+      chatEl.innerHTML = "";
+      chatEl.appendChild(createSceneCard());
+      messages.forEach((message, index) => {
+        chatEl.appendChild(createMessageNode(message.role, message.content, message.ts, index));
+      });
+      scrollToBottom();
     }
-    function createTypingNode() { const row = createMessageNode("assistant", "..."); row.querySelector(".bubble").innerHTML = "<span>···</span>"; return row; }
-    function appendMessage(role, text) { messages.push({ role, content: text, ts: Date.now() }); messages = messages.slice(-HISTORY_LIMIT); saveMessages(); chatEl.appendChild(createMessageNode(role, text)); scrollToBottom(); }
-    function scrollToBottom() { chatEl.scrollTop = chatEl.scrollHeight; }
 
-    // #下面代码实现的功能：发送消息并处理回复
+    function setSendingState(isLoading) {
+      sendBtn.disabled = isLoading;
+      sendBtn.classList.toggle("is-loading", isLoading);
+      inputEl.disabled = isLoading;
+      sendLabelEl.textContent = isLoading ? "发送中…" : "发送";
+    }
+
+    // #下面代码实现的功能：触发发送按钮的轻微“出发”动效，强化操作反馈
+    function triggerSendButtonKick() {
+      if (sendKickTimer) {
+        clearTimeout(sendKickTimer);
+      }
+      sendBtn.classList.remove("is-kick");
+      void sendBtn.offsetWidth;
+      sendBtn.classList.add("is-kick");
+      sendKickTimer = window.setTimeout(() => {
+        sendBtn.classList.remove("is-kick");
+        sendKickTimer = null;
+      }, 430);
+    }
+
+    function createSceneCard() {
+      const card = document.createElement("section");
+      card.className = "scene-card";
+
+      const eyebrow = document.createElement("p");
+      eyebrow.className = "scene-eyebrow";
+      eyebrow.textContent = "今晚先从这里落脚";
+
+      const title = document.createElement("h2");
+      title.textContent = "不用把自己讲完整，先把那点说不清的感觉放下来。";
+
+      const text = document.createElement("p");
+      text.textContent = "如果今晚不知道从哪一句开口，也没关系。可以从一幕画面、一句憋回去的话，或者今天最绕不过去的小事开始。";
+
+      const tagWrap = document.createElement("div");
+      tagWrap.className = "scene-tags";
+      starterTags.forEach((tag) => {
+        const chip = document.createElement("span");
+        chip.className = "scene-tag";
+        chip.textContent = tag;
+        tagWrap.appendChild(chip);
+      });
+
+      card.append(eyebrow, title, text, tagWrap);
+      return card;
+    }
+
+    function createMessageNode(role, text, timestamp = Date.now(), order = 0) {
+      const row = document.createElement("article");
+      row.className = `msg ${role}`;
+      row.style.setProperty("--message-delay", `${Math.min(order, 5) * 34}ms`);
+
+      const icon = document.createElement("img");
+      icon.className = "msg-icon";
+      icon.alt = role === "assistant" ? "小墨" : "你";
+      icon.src = role === "assistant" ? assistantAvatarSrc : userAvatarSrc;
+
+      const body = document.createElement("div");
+      body.className = "msg-body";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+
+      const meta = document.createElement("div");
+      meta.className = "msg-meta";
+      meta.textContent = `${role === "assistant" ? "小墨" : "你"} · ${formatMessageTime(timestamp)}`;
+
+      body.append(bubble, meta);
+
+      if (role === "assistant") {
+        row.append(icon, body);
+      } else {
+        row.append(body, icon);
+      }
+      return row;
+    }
+
+    function createTypingNode() {
+      const row = createMessageNode("assistant", "", Date.now());
+      row.querySelector(".bubble").innerHTML = "<span class='typing'><i></i><i></i><i></i></span>";
+      row.querySelector(".msg-meta").textContent = "小墨 · 正在回应";
+      return row;
+    }
+
+    function appendMessage(role, text) {
+      const timestamp = Date.now();
+      messages.push({ role, content: text, ts: timestamp });
+      messages = messages.slice(-HISTORY_LIMIT);
+      saveMessages();
+      chatEl.appendChild(createMessageNode(role, text, timestamp, messages.length - 1));
+      scrollToBottom();
+    }
+
+    function scrollToBottom() {
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    function formatMessageTime(timestamp) {
+      const date = new Date(timestamp || Date.now());
+      return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    // #下面代码实现的功能：生成页面内联头像，避免依赖额外静态资源
+    function buildAvatarData(label, startColor, endColor, textColor) {
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+          <defs>
+            <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="${startColor}"/>
+              <stop offset="100%" stop-color="${endColor}"/>
+            </linearGradient>
+          </defs>
+          <rect width="96" height="96" rx="28" fill="url(#g)"/>
+          <circle cx="48" cy="48" r="38" fill="rgba(255,255,255,0.08)"/>
+          <text x="50%" y="57%" text-anchor="middle" font-size="38" fill="${textColor}" font-family="PingFang SC, Microsoft YaHei, sans-serif">${label}</text>
+        </svg>
+      `;
+      return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    }
+
+    // #下面代码实现的功能：发送消息并在会话失效时平滑切回登录界面
     async function sendMessage() {
-      const text = inputEl.value.trim(); if (!text) return;
-      appendMessage("user", text); inputEl.value = ""; inputEl.style.height = "44px"; sendBtn.disabled = true; inputEl.disabled = true;
-      const typingNode = createTypingNode(); chatEl.appendChild(typingNode); scrollToBottom();
+      const text = inputEl.value.trim();
+      if (!text) {
+        return;
+      }
+
+      triggerSendButtonKick();
+
+      appendMessage("user", text);
+      inputEl.value = "";
+      inputEl.style.height = "56px";
+      setSendingState(true);
+
+      const typingNode = createTypingNode();
+      chatEl.appendChild(typingNode);
+      scrollToBottom();
+
+      let sessionExpired = false;
+
       try {
-        const resp = await request('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text, history: messages.map(({role, content}) => ({role, content})).slice(-HISTORY_LIMIT) }) });
-        const data = await resp.json().catch(() => ({})); typingNode.remove();
+        const resp = await request("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            conversation_id: ensureConversationId(),
+            history: messages.map(({ role, content }) => ({ role, content })).slice(-HISTORY_LIMIT),
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        typingNode.remove();
+
         if (!resp.ok) {
-          if (resp.status === 401) { enterAuthState(); throw new Error("登录已失效，请重新登录"); }
+          if (resp.status === 401) {
+            sessionExpired = true;
+            currentUser = null;
+            messages = [];
+            enterAuthState();
+            showAuthMsg("登录状态过期了，重新登录后我们继续。", true);
+            return;
+          }
           throw new Error(data.error || "请求失败");
         }
-        appendMessage("assistant", data.reply || "我在这儿，刚刚有点走神了。你愿意再说一次吗？");
-      } catch (e) {
-        typingNode.remove(); appendMessage("assistant", "我刚刚没连上情绪频道，我们再试一次。我在。");
-      } finally { sendBtn.disabled = false; inputEl.disabled = false; inputEl.focus(); }
+
+        appendMessage("assistant", data.reply || "我刚刚有点走神了。你愿意再说一次吗？");
+      } catch {
+        if (!sessionExpired) {
+          typingNode.remove();
+          appendMessage("assistant", "我刚刚没接稳这句话。你要是愿意，我们再试一次，我还在。");
+        }
+      } finally {
+        setSendingState(false);
+        inputEl.focus();
+      }
     }
   </script>
 </body>

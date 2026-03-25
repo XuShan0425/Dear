@@ -3,3 +3,5 @@ __pycache__/
 .dev.vars
 .wrangler/
 dear.db
+dear_runtime.log
+*.pyc

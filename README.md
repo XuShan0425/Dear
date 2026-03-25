@@ -1,122 +1,111 @@
-# Dear · 小墨 MVP
+# Dear · 小墨 MVP（VPS 部署模式）
 
-一个极简、治愈风格的 AI 聊天前端，支持 VPS 和 Cloudflare Workers。
+Dear 当前采用 **VPS 托管服务 + Cloudflare 仅做公网域名映射（DNS/代理）** 的部署方式。
 
-## 本次升级（重点）
+## 部署目标
 
-- Worker 端改为 **D1 真实用户体系**（注册 / 登录 / 登出 / 会话）。
-- 登录增加 **按 IP + 用户名分钟级限流**。
-- 连续失败 **10 次锁定 10 分钟**，前端弹出限时提示。
-- 增加 **登录失败日志**（时间 / IP / 用户名 / 原因）。
-- 增加 **后台管理界面**（查看登录失败日志）。
-- 增加 **CSRF Token** 校验（登录、注册、聊天、登出等 POST 接口）。
-- 聊天记录改为 `xiaomo_history_${username}`。
-- 登出支持“是否清理当前用户本地缓存”。
-- 支持 **主动下线所有设备**（按 user_id 清 session）。
+- Python 服务只在 VPS 上运行（`server.py`）。
+- Cloudflare 不再承载 Worker 业务逻辑，只负责域名映射到 VPS。
+- 主 agent 核心在后端 Python 模块集中维护。
 
 ---
 
-## Worker（推荐，D1 版）
+## 1) VPS 启动
 
-### 1) 配置 D1
+### 环境变量（`.env`）
 
-创建 D1 数据库后，填入 `wrangler.toml`：
+最少需要：
 
-```toml
-[[d1_databases]]
-binding = "DB"
-database_name = "dear-auth"
-database_id = "你的 D1 database_id"
+```env
+API_URL=你的上游模型 API 根地址
+API_KEY=你的上游模型密钥
+MODEL_NAME=你的模型名
+HOST=0.0.0.0
+PORT=8080
+SESSION_TTL_HOURS=168
+COOKIE_SECURE=false
+ADMIN_USERNAME=dear_admin
+ADMIN_PASSWORD=change_me_now
+ADMIN_SESSION_TTL_HOURS=12
 ```
 
-### 2) 设置 Secret
+> 生产环境建议把 `COOKIE_SECURE=true`，并通过 HTTPS 访问。
+> 后台管理台账号由 `.env` 中的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 托管，修改后需重启服务。
+
+### 启动服务
 
 ```bash
-npx wrangler secret put API_URL
-npx wrangler secret put API_KEY
-npx wrangler secret put MODEL_NAME
-npx wrangler secret put SESSION_TTL_HOURS
+python3 server.py
 ```
 
-### 3) 部署
-
-```bash
-npx wrangler deploy
-```
+启动后默认监听：`http://0.0.0.0:8080`
 
 ---
 
-## VPS（现状）
+## 2) Cloudflare 域名映射（仅映射，不跑 Worker）
 
-- VPS 仍可运行 `server.py`（SQLite 版本）。
-- 当前“D1 真实用户体系”主要在 Worker 端实现。
-
----
-
-## 后台管理界面
-
-前端右上角有“后台”按钮。
-
-默认后台账号（按你的需求）：
-- 用户名：`Tong`
-- 密码：`15010190`
-
-> 建议上线后改为环境变量并定期轮换。
+1. 在 Cloudflare DNS 中添加 `A` 记录（或 `AAAA`）指向 VPS 公网 IP。
+2. 需要 CDN/隐藏源站时可开启橙云代理；需要直连调试可关闭代理。
+3. 将站点域名流量转发到 VPS 端口（通常结合 Nginx/Caddy 做 80/443 -> 8080 反向代理）。
 
 ---
 
-## API 接口表
+## 3) API 接口（VPS 当前实现）
 
 ### 认证相关
 
-| 方法 | 路径 | 说明 | 成功 | 常见错误 |
-|---|---|---|---|---|
-| GET | `/api/auth/csrf` | 获取 CSRF Token 并写入 cookie | 200 | - |
-| POST | `/api/auth/register` | 注册 | 200 | 400 参数错误 / 403 CSRF / 409 用户名已存在 |
-| POST | `/api/auth/login` | 登录 | 200 | 400 参数错误 / 401 凭证错误 / 403 CSRF / 423 锁定 / 429 频率过高 |
-| GET | `/api/auth/me` | 查询登录状态 | 200 | - |
-| POST | `/api/auth/logout` | 登出当前会话 | 200 | 403 CSRF |
-| POST | `/api/auth/logout_all` | 下线当前账号所有设备 | 200 | 401 未登录 / 403 CSRF |
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/auth/me` | 查询登录状态 |
+| POST | `/api/auth/register` | 注册 |
+| POST | `/api/auth/login` | 登录 |
+| POST | `/api/auth/logout` | 登出当前会话 |
+| POST | `/api/auth/logout_all` | 下线当前账号所有设备 |
+
+### 后台管理相关
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/admin` | 后台管理页面 |
+| GET | `/api/admin/me` | 查询后台登录状态与配置状态 |
+| POST | `/api/admin/login` | 后台管理员登录 |
+| POST | `/api/admin/logout` | 后台管理员登出 |
+| GET | `/api/admin/dashboard` | 查询后台概览数据 |
+| GET | `/api/admin/users` | 查询后台用户列表 |
+| GET | `/api/admin/sessions` | 查询当前活跃会话 |
+| POST | `/api/admin/users/logout_all` | 按用户下线全部设备 |
 
 ### 聊天相关
 
-| 方法 | 路径 | 说明 | 成功 | 常见错误 |
-|---|---|---|---|---|
-| POST | `/api/chat` | 发起聊天 | 200 | 400 参数错误 / 401 未登录 / 403 CSRF / 502 上游失败 |
-
-### 管理后台
-
-| 方法 | 路径 | 说明 | 成功 | 常见错误 |
-|---|---|---|---|---|
-| POST | `/api/admin/login` | 管理员登录 | 200 | 401 账号密码错误 |
-| GET | `/api/admin/login-failures` | 查看登录失败日志 | 200 | 401 未授权 |
-
----
-
-## Worker / VPS 差异说明
-
-| 功能 | Worker（D1） | VPS（SQLite） |
+| 方法 | 路径 | 说明 |
 |---|---|---|
-| 用户注册/登录 | ✅ 真实用户体系 | ✅ SQLite 用户体系 |
-| 分钟级限流 + 锁定 | ✅ | ❌（待同步） |
-| CSRF Token | ✅ | ❌（待同步） |
-| 管理后台失败日志 | ✅ | ❌（待同步） |
-| 主动下线所有设备 | ✅ | ✅ |
+| POST | `/api/chat` | 发起聊天 |
+
+### 健康检查
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/healthz` | 服务健康状态 |
 
 ---
 
-## 本地调试
+## 4) 文件说明
 
-```bash
-cp .dev.vars.example .dev.vars
-npx wrangler dev
-```
-
-## 文件说明
-
-- `index.html`：登录 + 聊天 + 后台管理 UI
-- `worker.js`：Worker 路由入口
-- `worker/*.js`：按功能模块拆分（auth/chat/admin/db/utils/constants）
 - `server.py`：VPS 启动入口
-- `backend/*.py`：VPS 后端模块（auth/chat/db/http_handler/constants/env_utils）
-- `wrangler.toml`：Worker + D1 绑定
+- `backend/http_handler.py`：HTTP 路由与响应处理
+- `backend/auth.py`：认证与会话逻辑
+- `backend/chat.py`：聊天服务（调用主 agent 核心层）
+- `backend/agent_core.py`：主 agent 核心层（人格/安全/定制/版本入口）
+- `backend/db.py`：SQLite 存储与会话清理
+- `backend/admin_auth.py`：后台管理员鉴权与后台会话
+- `backend/admin_service.py`：后台概览、用户与会话管理服务
+- `index.html`：前端页面
+- `admin.html`：后台管理页面
+
+---
+
+## 5) 主 agent 后续优化入口
+
+- 人格层 / 安全层 / 定制层：编辑 `backend/agent_core.py` 的 `AGENT_CORE_LAYERS`
+- 版本层：编辑 `backend/agent_core.py` 的 `AGENT_CORE_VERSION`
+- 消息组装入口：`build_agent_messages`

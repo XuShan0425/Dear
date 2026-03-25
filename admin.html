@@ -1,0 +1,1432 @@
+<!doctype html>
+<!--
+这个文件实现什么功能：Dear 的后台管理单页界面。
+它负责什么：展示管理员登录页、运营概览、用户与会话管理、主 agent 配置只读巡检。
+它不负责什么：不处理后台鉴权判定、不直接读写数据库、不修改主 agent 人格文本。
+对外暴露什么：浏览器访问 `/admin` 或 `/admin.html` 时渲染的后台界面，以及对 `/api/admin/*` 的前端请求。
+依赖哪些关键模块：后台管理接口、浏览器 fetch、Intl 时间格式化能力。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Dear 主理人台</title>
+  <style>
+    :root {
+      --bg-night: #080d12;
+      --bg-deep: #111a1f;
+      --bg-panel: rgba(18, 29, 34, 0.82);
+      --bg-panel-soft: rgba(255, 255, 255, 0.04);
+      --bg-elevated: rgba(20, 33, 39, 0.92);
+      --line-soft: rgba(214, 225, 223, 0.12);
+      --line-strong: rgba(214, 225, 223, 0.2);
+      --text-main: #eef3ed;
+      --text-soft: #c5d1cb;
+      --text-muted: #8ea19a;
+      --text-faint: #6f827c;
+      --accent-sage: #b8cf9f;
+      --accent-gold: #d8a979;
+      --accent-clay: #452a22;
+      --danger: #efb1a5;
+      --warning: #f0c58a;
+      --success: #b6d8b3;
+      --radius-2xl: 34px;
+      --radius-xl: 26px;
+      --radius-lg: 20px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --shadow-lg: 0 32px 72px rgba(0, 0, 0, 0.38);
+      --shadow-md: 0 18px 38px rgba(0, 0, 0, 0.24);
+      --ease-soft: cubic-bezier(0.2, 0.8, 0.24, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      color: var(--text-main);
+      font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(90% 80% at 0% 0%, rgba(184, 207, 159, 0.2), transparent 44%),
+        radial-gradient(90% 80% at 100% 100%, rgba(216, 169, 121, 0.18), transparent 42%),
+        linear-gradient(145deg, #090d11 0%, #11181d 55%, #16100f 100%);
+      letter-spacing: 0.01em;
+    }
+
+    body {
+      padding: 18px;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      border-radius: 999px;
+      filter: blur(22px);
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.68;
+    }
+
+    body::before {
+      top: -120px;
+      right: -80px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(184, 207, 159, 0.18), transparent 66%);
+      animation: drift 26s ease-in-out infinite alternate;
+    }
+
+    body::after {
+      bottom: -120px;
+      left: -100px;
+      width: 360px;
+      height: 360px;
+      background: radial-gradient(circle, rgba(216, 169, 121, 0.14), transparent 68%);
+      animation: drift 22s ease-in-out infinite alternate-reverse;
+    }
+
+    button,
+    input {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      transition:
+        transform 0.2s ease,
+        opacity 0.2s ease,
+        border-color 0.2s ease,
+        background 0.2s ease,
+        box-shadow 0.2s ease;
+    }
+
+    button:disabled {
+      opacity: 0.56;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      width: min(1440px, 100%);
+      min-height: calc(100dvh - 36px);
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line-soft);
+      border-radius: 38px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(17, 24, 29, 0.82), rgba(10, 14, 18, 0.98)),
+        radial-gradient(circle at top right, rgba(184, 207, 159, 0.08), transparent 32%);
+      backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      padding: 22px 26px;
+      border-bottom: 1px solid var(--line-soft);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 56px;
+      height: 56px;
+      flex-shrink: 0;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background:
+        linear-gradient(150deg, rgba(184, 207, 159, 0.26), rgba(216, 169, 121, 0.22)),
+        rgba(19, 28, 33, 0.85);
+      display: grid;
+      place-items: center;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      font-family: "Iowan Old Style", "Songti SC", serif;
+      font-size: 24px;
+      letter-spacing: 0.08em;
+    }
+
+    .brand-copy {
+      min-width: 0;
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(238, 243, 237, 0.62);
+    }
+
+    .brand-copy h1 {
+      margin: 7px 0 0;
+      font-family: "Iowan Old Style", "Songti SC", serif;
+      font-size: clamp(20px, 2vw, 28px);
+      line-height: 1.15;
+      font-weight: 700;
+    }
+
+    .brand-copy p {
+      margin: 6px 0 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.75;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .status-pill,
+    .ghost-btn,
+    .danger-btn,
+    .stat-chip {
+      border: 1px solid var(--line-soft);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(10px);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-soft);
+      white-space: nowrap;
+    }
+
+    .status-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-sage), var(--accent-gold));
+      box-shadow: 0 0 14px rgba(184, 207, 159, 0.45);
+    }
+
+    .ghost-btn,
+    .danger-btn,
+    .primary-btn,
+    .logout-inline {
+      cursor: pointer;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 16px;
+    }
+
+    .ghost-btn,
+    .danger-btn,
+    .logout-inline {
+      border: 1px solid var(--line-soft);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .ghost-btn:hover,
+    .danger-btn:hover,
+    .primary-btn:hover,
+    .logout-inline:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .danger-btn,
+    .logout-inline {
+      color: var(--danger);
+    }
+
+    .primary-btn {
+      border: none;
+      color: #1f261f;
+      background: linear-gradient(135deg, var(--accent-sage), var(--accent-gold));
+      box-shadow: 0 18px 30px rgba(184, 207, 159, 0.14);
+    }
+
+    .viewport {
+      flex: 1;
+      overflow-y: auto;
+      padding: 26px;
+    }
+
+    .login-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(340px, 440px);
+      gap: 22px;
+      min-height: 100%;
+    }
+
+    .panel,
+    .hero-card,
+    .login-panel,
+    .stat-card {
+      border: 1px solid var(--line-soft);
+      background:
+        linear-gradient(180deg, rgba(21, 31, 37, 0.94), rgba(14, 19, 23, 0.92)),
+        radial-gradient(circle at top right, rgba(184, 207, 159, 0.08), transparent 28%);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-md);
+    }
+
+    .hero-card {
+      position: relative;
+      overflow: hidden;
+      padding: 32px;
+      min-height: 440px;
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      right: -60px;
+      bottom: -70px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(216, 169, 121, 0.12), transparent 70%);
+    }
+
+    .hero-card h2 {
+      margin: 16px 0 14px;
+      max-width: 11ch;
+      font-family: "Iowan Old Style", "Songti SC", serif;
+      font-size: clamp(34px, 5vw, 54px);
+      line-height: 1.08;
+      font-weight: 700;
+    }
+
+    .hero-card p {
+      margin: 0;
+      max-width: 42rem;
+      color: var(--text-soft);
+      font-size: 16px;
+      line-height: 1.95;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .micro-card {
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .micro-card strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 15px;
+      letter-spacing: 0.02em;
+    }
+
+    .micro-card span {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .login-panel {
+      align-self: center;
+      padding: 28px 24px;
+    }
+
+    .login-panel h3 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Songti SC", serif;
+      font-size: 28px;
+      font-weight: 700;
+    }
+
+    .panel-sub {
+      margin: 12px 0 0;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .field {
+      margin-top: 14px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .field input,
+    .search-input {
+      width: 100%;
+      min-height: 50px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-main);
+    }
+
+    .field input::placeholder,
+    .search-input::placeholder {
+      color: rgba(142, 161, 154, 0.72);
+    }
+
+    .field input:focus-visible,
+    .search-input:focus-visible,
+    .ghost-btn:focus-visible,
+    .danger-btn:focus-visible,
+    .primary-btn:focus-visible,
+    .logout-inline:focus-visible {
+      outline: none;
+      border-color: rgba(184, 207, 159, 0.72);
+      box-shadow: 0 0 0 3px rgba(184, 207, 159, 0.12);
+    }
+
+    .login-note,
+    .empty-state,
+    .risk-note {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.035);
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .dashboard {
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero-strip {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      padding: 22px 24px;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--line-soft);
+      background:
+        linear-gradient(135deg, rgba(184, 207, 159, 0.14), rgba(216, 169, 121, 0.09)),
+        rgba(255, 255, 255, 0.03);
+    }
+
+    .hero-strip h2 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Songti SC", serif;
+      font-size: clamp(28px, 3vw, 36px);
+      line-height: 1.2;
+    }
+
+    .hero-strip p {
+      margin: 10px 0 0;
+      color: var(--text-soft);
+      font-size: 14px;
+      line-height: 1.85;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      align-content: flex-start;
+    }
+
+    .stat-chip {
+      padding: 10px 13px;
+      color: var(--text-soft);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stat-card {
+      padding: 20px;
+    }
+
+    .stat-label {
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      margin-top: 12px;
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-desc {
+      margin-top: 12px;
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .board-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+      gap: 18px;
+    }
+
+    .panel {
+      padding: 22px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .panel-head h3 {
+      margin: 0;
+      font-family: "Iowan Old Style", "Songti SC", serif;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .panel-head p {
+      margin: 8px 0 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .panel-tools {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .search-input {
+      min-width: 220px;
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 14px;
+    }
+
+    .meta-list,
+    .agent-sections,
+    .session-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .meta-item,
+    .session-item,
+    .layer-card {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .meta-key,
+    .layer-title {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .meta-value,
+    .layer-lines {
+      color: var(--text-main);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .layer-lines {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .layer-lines li + li {
+      margin-top: 6px;
+    }
+
+    .table-shell {
+      overflow: hidden;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(5, 8, 10, 0.18);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text-muted);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    td {
+      font-size: 14px;
+      color: var(--text-soft);
+      line-height: 1.7;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .user-name {
+      display: block;
+      color: var(--text-main);
+      font-weight: 600;
+    }
+
+    .muted {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .session-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .session-item strong {
+      display: block;
+      font-size: 15px;
+      color: var(--text-main);
+    }
+
+    .session-item span {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .risk-panel {
+      border-style: dashed;
+    }
+
+    .toast {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      min-width: 260px;
+      max-width: min(420px, calc(100vw - 32px));
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(10, 14, 18, 0.92);
+      box-shadow: var(--shadow-md);
+      color: var(--text-main);
+      font-size: 13px;
+      line-height: 1.7;
+      transform: translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s ease;
+      z-index: 10;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toast[data-tone="error"] {
+      border-color: rgba(239, 177, 165, 0.3);
+      color: #ffe4de;
+    }
+
+    .toast[data-tone="success"] {
+      border-color: rgba(182, 216, 179, 0.3);
+      color: #e8f6e6;
+    }
+
+    @keyframes drift {
+      from {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      to {
+        transform: translate3d(18px, 24px, 0) scale(1.06);
+      }
+    }
+
+    @media (max-width: 1160px) {
+      .stats-grid,
+      .board-grid,
+      .login-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-meta {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 10px;
+      }
+
+      .app {
+        min-height: calc(100dvh - 20px);
+        border-radius: 28px;
+      }
+
+      .topbar,
+      .viewport,
+      .panel,
+      .hero-card,
+      .login-panel {
+        padding-left: 18px;
+        padding-right: 18px;
+      }
+
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .top-actions,
+      .panel-tools {
+        width: 100%;
+      }
+
+      .panel-tools {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .search-input {
+        min-width: 0;
+      }
+
+      .hero-grid {
+        grid-template-columns: 1fr;
+      }
+
+      th:nth-child(3),
+      td:nth-child(3),
+      th:nth-child(4),
+      td:nth-child(4) {
+        display: none;
+      }
+
+      .toast {
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">D</div>
+        <div class="brand-copy">
+          <p class="eyebrow">Dear Operations Console</p>
+          <h1>主理人后台 · 用户与会话管理台</h1>
+          <p>先把最关键的运营动作接起来：看整体态势、查当前用户、必要时一键下线设备。</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div id="adminStatePill" class="status-pill">后台状态检查中</div>
+        <button id="refreshBtn" class="ghost-btn hidden" type="button">刷新数据</button>
+        <button id="logoutBtn" class="danger-btn hidden" type="button">退出后台</button>
+      </div>
+    </header>
+
+    <main class="viewport">
+      <section id="loginView" class="login-shell hidden">
+        <article class="hero-card">
+          <p class="eyebrow">Operator First</p>
+          <h2>把后台先做成可看、可查、可控。</h2>
+          <p>
+            这一版后台不碰主 agent 的人格语义，只补上主理人最需要的运营视角：用户总量、会话活跃度、设备下线、主 agent 配置巡检，以及后续风险工单接入的明确落点。
+          </p>
+          <div class="hero-grid">
+            <div class="micro-card">
+              <strong>用户总览</strong>
+              <span>快速看到总用户数、近 7 天新增、当前活跃会话和即将过期会话。</span>
+            </div>
+            <div class="micro-card">
+              <strong>设备管理</strong>
+              <span>按用户一键下线全部设备，适合账号异常、共用设备或安全回收场景。</span>
+            </div>
+            <div class="micro-card">
+              <strong>Agent 巡检</strong>
+              <span>直接查看当前主 agent 版本和各层配置，避免主理人摸黑改配置。</span>
+            </div>
+            <div class="micro-card">
+              <strong>风险预留位</strong>
+              <span>先把后台框架立住，后面可以继续接风险事件、人工复核和告警流。</span>
+            </div>
+          </div>
+        </article>
+
+        <aside class="login-panel">
+          <h3>登录主理人台</h3>
+          <p class="panel-sub" id="loginSubtitle">使用管理员账号进入后台。管理员账号由服务端环境变量托管，不走普通用户账号体系。</p>
+
+          <form id="loginForm">
+            <div class="field">
+              <label for="adminUsername">管理员账号</label>
+              <input id="adminUsername" name="username" autocomplete="username" placeholder="请输入 ADMIN_USERNAME" />
+            </div>
+            <div class="field">
+              <label for="adminPassword">管理员密码</label>
+              <input id="adminPassword" name="password" type="password" autocomplete="current-password" placeholder="请输入 ADMIN_PASSWORD" />
+            </div>
+            <button id="loginBtn" class="primary-btn" type="submit" style="width:100%; margin-top:18px;">进入后台</button>
+          </form>
+
+          <div id="loginMeta" class="login-note">
+            正在检查后台是否已配置管理员账号。
+          </div>
+        </aside>
+      </section>
+
+      <section id="dashboardView" class="dashboard hidden">
+        <section class="hero-strip">
+          <div>
+            <h2>先稳住运营可见性，再继续往风控和版本管理扩。</h2>
+            <p id="heroSummary">正在拉取后台概览。</p>
+          </div>
+          <div class="hero-meta" id="heroMeta"></div>
+        </section>
+
+        <section id="summaryGrid" class="stats-grid"></section>
+
+        <div class="board-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>系统状态</h3>
+                <p>只放主理人真的会关注的信息：当前服务时间、会话配置、后台账号和模型接入状态。</p>
+              </div>
+            </div>
+            <div id="systemPanel" class="meta-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>主 Agent 巡检</h3>
+                <p>只读查看当前版本与层配置，本次后台不会改写核心人格文本。</p>
+              </div>
+            </div>
+            <div id="agentPanel" class="agent-sections"></div>
+          </article>
+        </div>
+
+        <div class="board-grid">
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>用户管理</h3>
+                <p>支持按用户名快速筛选，并在必要时按用户回收全部活跃设备。</p>
+              </div>
+              <div class="panel-tools">
+                <input id="userSearch" class="search-input" placeholder="搜索用户名" />
+              </div>
+            </div>
+            <div id="userTableWrap" class="table-shell"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <div>
+                <h3>活跃会话</h3>
+                <p>展示当前仍有效的设备会话，不暴露 token，只给主理人必要态势。</p>
+              </div>
+            </div>
+            <div id="sessionList" class="session-list"></div>
+          </article>
+        </div>
+
+        <article class="panel risk-panel">
+          <div class="panel-head">
+            <div>
+              <h3>风险巡检预留位</h3>
+              <p>这一块先不伪造数据。等后端接入对话级风控落库后，可以在这里继续接风险事件队列与人工处理流。</p>
+            </div>
+          </div>
+          <div id="riskPanel" class="risk-note"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <script>
+    const state = {
+      configured: false,
+      authenticated: false,
+      admin: null,
+      dashboard: null,
+      users: [],
+      sessions: [],
+      userKeyword: "",
+      busy: false
+    };
+
+    const elements = {
+      loginView: document.getElementById("loginView"),
+      dashboardView: document.getElementById("dashboardView"),
+      loginForm: document.getElementById("loginForm"),
+      adminUsername: document.getElementById("adminUsername"),
+      adminPassword: document.getElementById("adminPassword"),
+      loginBtn: document.getElementById("loginBtn"),
+      loginMeta: document.getElementById("loginMeta"),
+      loginSubtitle: document.getElementById("loginSubtitle"),
+      refreshBtn: document.getElementById("refreshBtn"),
+      logoutBtn: document.getElementById("logoutBtn"),
+      adminStatePill: document.getElementById("adminStatePill"),
+      heroSummary: document.getElementById("heroSummary"),
+      heroMeta: document.getElementById("heroMeta"),
+      summaryGrid: document.getElementById("summaryGrid"),
+      systemPanel: document.getElementById("systemPanel"),
+      agentPanel: document.getElementById("agentPanel"),
+      userSearch: document.getElementById("userSearch"),
+      userTableWrap: document.getElementById("userTableWrap"),
+      sessionList: document.getElementById("sessionList"),
+      riskPanel: document.getElementById("riskPanel"),
+      toast: document.getElementById("toast")
+    };
+
+    const timeFormatter = new Intl.DateTimeFormat("zh-CN", {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
+
+    let toastTimer = null;
+
+    function formatTime(value) {
+      if (!value) {
+        return "暂无";
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      return timeFormatter.format(date);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function showToast(message, tone = "neutral") {
+      elements.toast.textContent = message;
+      elements.toast.dataset.tone = tone;
+      elements.toast.classList.add("show");
+      window.clearTimeout(toastTimer);
+      toastTimer = window.setTimeout(() => {
+        elements.toast.classList.remove("show");
+      }, 2600);
+    }
+
+    function setBusy(nextBusy) {
+      state.busy = nextBusy;
+      elements.loginBtn.disabled = nextBusy || !state.configured;
+      elements.refreshBtn.disabled = nextBusy;
+      elements.logoutBtn.disabled = nextBusy;
+    }
+
+    async function requestJSON(url, options = {}) {
+      const headers = {};
+      const hasBody = options.body !== undefined;
+      if (hasBody) {
+        headers["Content-Type"] = "application/json";
+      }
+
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers: {
+          ...headers,
+          ...(options.headers || {})
+        }
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "请求失败");
+      }
+      return data;
+    }
+
+    function getFilteredUsers() {
+      const keyword = state.userKeyword.trim().toLowerCase();
+      if (!keyword) {
+        return state.users;
+      }
+      return state.users.filter((user) => user.username.toLowerCase().includes(keyword));
+    }
+
+    function renderTopState() {
+      const statusText = !state.configured
+        ? "后台未配置管理员账号"
+        : state.authenticated && state.admin
+          ? `已登录：${state.admin.username}`
+          : "等待管理员登录";
+      elements.adminStatePill.textContent = statusText;
+      elements.refreshBtn.classList.toggle("hidden", !state.authenticated);
+      elements.logoutBtn.classList.toggle("hidden", !state.authenticated);
+    }
+
+    function renderLoginView() {
+      elements.loginView.classList.toggle("hidden", state.authenticated);
+      elements.dashboardView.classList.toggle("hidden", !state.authenticated);
+
+      if (!state.configured) {
+        elements.loginSubtitle.textContent = "当前服务还没有配置后台管理员账号，先在 .env 中补上管理员环境变量。";
+        elements.loginMeta.innerHTML = "需要在服务端 `.env` 中设置 `ADMIN_USERNAME`、`ADMIN_PASSWORD`，可选设置 `ADMIN_SESSION_TTL_HOURS`。配置后重启服务即可启用后台。";
+      } else {
+        elements.loginSubtitle.textContent = "管理员账号由服务端环境变量托管，不走普通用户账号体系。";
+        elements.loginMeta.innerHTML = "后台登录成功后，会使用独立的管理员 Cookie，不会和普通用户聊天会话混用。";
+      }
+    }
+
+    function renderHero() {
+      const summary = state.dashboard?.summary;
+      const recentUsers = state.dashboard?.recent_users || [];
+      if (!summary) {
+        elements.heroSummary.textContent = "暂无后台数据。";
+        elements.heroMeta.innerHTML = "";
+        return;
+      }
+
+      elements.heroSummary.textContent = `当前共有 ${summary.total_users} 位注册用户，${summary.users_with_active_sessions} 位用户有活跃设备。最近加入的用户：${recentUsers.map((user) => user.username).join("、") || "暂无"}。`;
+      elements.heroMeta.innerHTML = [
+        `<span class="stat-chip">管理员：${escapeHtml(state.dashboard.system.admin_username || "未配置")}</span>`,
+        `<span class="stat-chip">Agent 版本：${escapeHtml(state.dashboard.agent_core.version)}</span>`,
+        `<span class="stat-chip">服务时间：${escapeHtml(formatTime(state.dashboard.system.server_time))}</span>`
+      ].join("");
+    }
+
+    function renderSummary() {
+      const summary = state.dashboard?.summary;
+      if (!summary) {
+        elements.summaryGrid.innerHTML = "";
+        return;
+      }
+
+      const cards = [
+        {
+          label: "注册用户",
+          value: summary.total_users,
+          desc: "当前数据库里的总用户量。"
+        },
+        {
+          label: "活跃设备",
+          value: summary.active_sessions,
+          desc: "所有还未过期的登录会话。"
+        },
+        {
+          label: "近 7 天新增",
+          value: summary.weekly_new_users,
+          desc: "帮助主理人判断近期增长变化。"
+        },
+        {
+          label: "24 小时内过期",
+          value: summary.expiring_sessions_24h,
+          desc: "提醒是否存在集中掉线窗口。"
+        }
+      ];
+
+      elements.summaryGrid.innerHTML = cards
+        .map(
+          (card) => `
+            <article class="stat-card">
+              <div class="stat-label">${escapeHtml(card.label)}</div>
+              <div class="stat-value">${escapeHtml(card.value)}</div>
+              <div class="stat-desc">${escapeHtml(card.desc)}</div>
+            </article>
+          `
+        )
+        .join("");
+    }
+
+    function renderSystemPanel() {
+      const system = state.dashboard?.system;
+      if (!system) {
+        elements.systemPanel.innerHTML = "";
+        return;
+      }
+
+      const items = [
+        ["服务时间", formatTime(system.server_time)],
+        ["模型接口状态", system.api_configured ? "已配置 API_URL / API_KEY / MODEL_NAME" : "尚未完整配置模型服务"],
+        ["用户会话时长", `${system.session_ttl_hours} 小时`],
+        ["后台会话时长", `${system.admin_session_ttl_hours} 小时`],
+        ["Cookie Secure", system.cookie_secure ? "已开启" : "未开启"],
+        ["管理员账号", system.admin_username || "未配置"]
+      ];
+
+      elements.systemPanel.innerHTML = items
+        .map(
+          ([label, value]) => `
+            <div class="meta-item">
+              <span class="meta-key">${escapeHtml(label)}</span>
+              <span class="meta-value">${escapeHtml(value)}</span>
+            </div>
+          `
+        )
+        .join("");
+    }
+
+    function renderAgentPanel() {
+      const agent = state.dashboard?.agent_core;
+      if (!agent) {
+        elements.agentPanel.innerHTML = "";
+        return;
+      }
+
+      const versionCard = `
+        <div class="layer-card">
+          <span class="layer-title">Version</span>
+          <div class="meta-value">${escapeHtml(agent.version)}</div>
+        </div>
+      `;
+
+      const layerCards = Object.entries(agent.layers || {})
+        .map(([key, lines]) => {
+          const normalizedLines = Array.isArray(lines) ? lines : [];
+          return `
+            <div class="layer-card">
+              <span class="layer-title">${escapeHtml(key)}</span>
+              ${
+                normalizedLines.length
+                  ? `<ol class="layer-lines">${normalizedLines
+                      .map((line) => `<li>${escapeHtml(line)}</li>`)
+                      .join("")}</ol>`
+                  : `<div class="meta-value">当前为空，保留给后续扩展。</div>`
+              }
+            </div>
+          `;
+        })
+        .join("");
+
+      elements.agentPanel.innerHTML = versionCard + layerCards;
+    }
+
+    function renderUsers() {
+      const users = getFilteredUsers();
+      if (!users.length) {
+        elements.userTableWrap.innerHTML = `<div class="empty-state">当前筛选条件下没有用户。</div>`;
+        return;
+      }
+
+      const rows = users
+        .map((user) => {
+          const sessionText = user.active_session_count > 0
+            ? `${user.active_session_count} 台设备在线`
+            : "当前离线";
+
+          const latestSession = user.latest_session_expires_at
+            ? `最近会话到期：${formatTime(user.latest_session_expires_at)}`
+            : "暂无活跃会话";
+
+          return `
+            <tr>
+              <td>
+                <span class="user-name">${escapeHtml(user.username)}</span>
+                <span class="muted">ID: ${escapeHtml(user.id)}</span>
+              </td>
+              <td>${escapeHtml(formatTime(user.created_at))}</td>
+              <td>
+                ${escapeHtml(sessionText)}
+                <div class="muted">${escapeHtml(latestSession)}</div>
+              </td>
+              <td>
+                ${escapeHtml(user.latest_session_created_at ? formatTime(user.latest_session_created_at) : "暂无")}
+              </td>
+              <td>
+                <button
+                  type="button"
+                  class="logout-inline"
+                  data-action="clear-user-sessions"
+                  data-user-id="${escapeHtml(user.id)}"
+                  data-username="${escapeHtml(user.username)}"
+                >
+                  下线全部设备
+                </button>
+              </td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      elements.userTableWrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>注册时间</th>
+              <th>在线状态</th>
+              <th>最近登录</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderSessions() {
+      if (!state.sessions.length) {
+        elements.sessionList.innerHTML = `<div class="empty-state">当前没有活跃设备会话。</div>`;
+        return;
+      }
+
+      elements.sessionList.innerHTML = state.sessions
+        .map(
+          (session) => `
+            <div class="session-item">
+              <div>
+                <strong>${escapeHtml(session.username)}</strong>
+                <span>创建于 ${escapeHtml(formatTime(session.created_at))}</span>
+              </div>
+              <div class="muted">到期于 ${escapeHtml(formatTime(session.expires_at))}</div>
+            </div>
+          `
+        )
+        .join("");
+    }
+
+    function renderRiskPanel() {
+      const risk = state.dashboard?.risk_monitoring;
+      elements.riskPanel.textContent = risk
+        ? `${risk.title}：${risk.message}`
+        : "风险巡检模块尚未接入。";
+    }
+
+    function renderDashboard() {
+      renderHero();
+      renderSummary();
+      renderSystemPanel();
+      renderAgentPanel();
+      renderUsers();
+      renderSessions();
+      renderRiskPanel();
+    }
+
+    function render() {
+      renderTopState();
+      renderLoginView();
+      if (state.authenticated) {
+        renderDashboard();
+      }
+      setBusy(state.busy);
+    }
+
+    async function loadDashboard({ silent = false } = {}) {
+      if (!silent) {
+        setBusy(true);
+      }
+      try {
+        const [dashboard, users, sessions] = await Promise.all([
+          requestJSON("/api/admin/dashboard"),
+          requestJSON("/api/admin/users"),
+          requestJSON("/api/admin/sessions")
+        ]);
+        state.dashboard = dashboard;
+        state.users = users.users || [];
+        state.sessions = sessions.sessions || [];
+        render();
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function bootstrap() {
+      setBusy(true);
+      try {
+        const me = await requestJSON("/api/admin/me");
+        state.configured = Boolean(me.configured);
+        state.authenticated = Boolean(me.authenticated);
+        state.admin = me.admin || null;
+        render();
+
+        if (state.authenticated) {
+          await loadDashboard({ silent: true });
+          render();
+        }
+      } catch (error) {
+        showToast(error.message || "后台初始化失败", "error");
+      } finally {
+        setBusy(false);
+        render();
+      }
+    }
+
+    elements.loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!state.configured) {
+        showToast("请先在服务端 .env 中配置管理员账号", "error");
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const data = await requestJSON("/api/admin/login", {
+          method: "POST",
+          body: JSON.stringify({
+            username: elements.adminUsername.value.trim(),
+            password: elements.adminPassword.value
+          })
+        });
+        state.authenticated = true;
+        state.admin = data.admin || null;
+        elements.adminPassword.value = "";
+        await loadDashboard({ silent: true });
+        render();
+        showToast("后台登录成功", "success");
+      } catch (error) {
+        showToast(error.message || "登录失败", "error");
+      } finally {
+        setBusy(false);
+        render();
+      }
+    });
+
+    elements.refreshBtn.addEventListener("click", async () => {
+      try {
+        await loadDashboard();
+        showToast("后台数据已刷新", "success");
+      } catch (error) {
+        showToast(error.message || "刷新失败", "error");
+      }
+    });
+
+    elements.logoutBtn.addEventListener("click", async () => {
+      setBusy(true);
+      try {
+        await requestJSON("/api/admin/logout", { method: "POST" });
+        state.authenticated = false;
+        state.admin = null;
+        state.dashboard = null;
+        state.users = [];
+        state.sessions = [];
+        render();
+        showToast("已退出后台", "success");
+      } catch (error) {
+        showToast(error.message || "退出失败", "error");
+      } finally {
+        setBusy(false);
+        render();
+      }
+    });
+
+    elements.userSearch.addEventListener("input", (event) => {
+      state.userKeyword = event.target.value || "";
+      renderUsers();
+    });
+
+    elements.userTableWrap.addEventListener("click", async (event) => {
+      const button = event.target.closest('[data-action="clear-user-sessions"]');
+      if (!button || state.busy) {
+        return;
+      }
+
+      const userId = Number(button.dataset.userId);
+      const username = button.dataset.username || "该用户";
+      const confirmed = window.confirm(`确认要下线 ${username} 的全部设备吗？`);
+      if (!confirmed) {
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const data = await requestJSON("/api/admin/users/logout_all", {
+          method: "POST",
+          body: JSON.stringify({ user_id: userId })
+        });
+        await loadDashboard({ silent: true });
+        showToast(data.message || "已完成设备下线", "success");
+      } catch (error) {
+        showToast(error.message || "设备下线失败", "error");
+      } finally {
+        setBusy(false);
+        render();
+      }
+    });
+
+    bootstrap();
+  </script>
+</body>
+</html>

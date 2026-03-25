@@ -1,3 +1,11 @@
+"""
+这个文件实现什么功能：管理 Dear 的 SQLite 连接、基础时间工具与表结构初始化。
+它负责什么：创建数据库连接、初始化用户/会话/管理员相关表、提供统一的 UTC 时间辅助函数。
+它不负责什么：不处理 HTTP 路由、不做鉴权决策、不拼装后台页面数据。
+对外暴露什么：DB_CONN、DB_LOCK、init_db、cleanup_expired_sessions、now_utc、isoformat、parse_iso。
+依赖哪些关键模块：sqlite3、threading、backend.constants。
+"""
+
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -54,7 +62,32 @@ def init_db() -> None:
             )
             """
         )
+        DB_CONN.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        DB_CONN.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                admin_user_id INTEGER NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(admin_user_id) REFERENCES admin_users(id)
+            )
+            """
+        )
         DB_CONN.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)")
+        DB_CONN.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions(expires_at)"
+        )
         DB_CONN.commit()
 
 

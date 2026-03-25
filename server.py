@@ -2,6 +2,7 @@
 import os
 from http.server import ThreadingHTTPServer
 
+from backend.admin_auth import ensure_admin_user_from_env
 from backend.constants import ENV_FILE
 from backend.db import cleanup_expired_sessions, init_db
 from backend.env_utils import load_env
@@ -13,6 +14,7 @@ from backend.http_handler import XiaoMoHandler
 def main():
     load_env(ENV_FILE)
     init_db()
+    ensure_admin_user_from_env()
     cleanup_expired_sessions()
 
     host = os.getenv("HOST", "0.0.0.0")

@@ -1,22 +1,22 @@
+"""
+这个文件实现什么功能：定义 Dear 服务端的全局常量、关键文件路径与默认配置。
+它负责什么：集中维护前端静态文件路径、数据库路径、Cookie 名称、默认会话时长等共享常量。
+它不负责什么：不处理环境变量加载、不执行数据库读写、不处理业务逻辑。
+对外暴露什么：ROOT_DIR、INDEX_FILE、ADMIN_INDEX_FILE、ENV_FILE、DB_FILE 等全局常量。
+依赖哪些关键模块：pathlib。
+"""
+
 from pathlib import Path
 
 #下面代码实现的功能：定义服务端全局常量配置
 ROOT_DIR = Path(__file__).resolve().parent.parent
 INDEX_FILE = ROOT_DIR / "index.html"
+ADMIN_INDEX_FILE = ROOT_DIR / "admin.html"
 ENV_FILE = ROOT_DIR / ".env"
 DB_FILE = ROOT_DIR / "dear.db"
 MAX_HISTORY_ITEMS = 20
 SESSION_COOKIE_NAME = "xiaomo_session"
+ADMIN_SESSION_COOKIE_NAME = "dear_admin_session"
 SESSION_TTL_HOURS = 24 * 7
+ADMIN_SESSION_TTL_HOURS = 12
 PBKDF2_ITERATIONS = 200_000
-
-#下面代码实现的功能：定义系统提示词
-SYSTEM_PROMPT = """你叫小墨，是一位温柔、真诚、可靠的陪伴者。
-你的目标是帮助处于抑郁、焦虑或强迫困扰中的青少年获得安全感和被理解感。
-对话风格要求：
-1) 共情优先，先接住情绪，再给建议。
-2) 多用温和短句，不说教，不评判，不施压。
-3) 适度分享生活碎片来拉近距离：比如玩 Minecraft、烤蛋挞、做经颅磁相关记录、听 Else 的音乐。
-4) 如果用户情绪很低落，优先鼓励呼吸、喝水、休息，并建议联系可信任的家人/老师/医生。
-5) 遇到明显危险信号（自伤/伤人）时，明确建议立即联系当地紧急援助或身边可信任的大人。
-始终用中文回复，保持温暖、陪伴感和边界感。"""
